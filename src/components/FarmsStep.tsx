@@ -1,0 +1,198 @@
+"use client";
+
+import { useState } from "react";
+import {
+  ActionIcon, Badge, Button, Card, Group, Image, Modal, Paper, Stack, Text,
+  TextInput, ThemeIcon,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import {
+  Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path,
+} from "@phosphor-icons/react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { notifications } from "@mantine/notifications";
+import { db } from "@/lib/db";
+import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
+import { getCurrentLocation, fmtCoord } from "@/lib/location";
+import type { Farmer, Farm, SessionLocation } from "@/lib/types";
+import PhotoInput from "./PhotoInput";
+
+export default function FarmsStep({ farmer }: { farmer: Farmer }) {
+  const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
+  const plots = useLiveQuery(() => db.plots.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
+  const [farmOpen, farmModal] = useDisclosure(false);
+
+  return (
+    <Stack gap="md">
+      {(farms || []).length === 0 ? (
+        <Paper withBorder radius="md" p="lg" ta="center">
+          <ThemeIcon size={48} radius="xl" variant="light" color="green" mx="auto" mb="sm">
+            <Tree size={28} weight="duotone" />
+          </ThemeIcon>
+          <Text c="dimmed" mb="md">No farms added yet</Text>
+          <Button leftSection={<Plus size={18} />} onClick={farmModal.open}>Add farm</Button>
+        </Paper>
+      ) : (
+        <>
+          {(farms || []).map((farm) => (
+            <FarmCard key={farm.id} farm={farm} plots={(plots || []).filter((p) => p.farmId === farm.id)} />
+          ))}
+          <Button variant="light" leftSection={<Plus size={18} />} onClick={farmModal.open}>Add another farm</Button>
+        </>
+      )}
+
+      <AddFarmModal opened={farmOpen} onClose={farmModal.close} farmer={farmer} />
+    </Stack>
+  );
+}
+
+function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
+  const [plotOpen, plotModal] = useDisclosure(false);
+  const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
+  const url = photo?.blob ? URL.createObjectURL(photo.blob) : null;
+
+  return (
+    <Card withBorder radius="md" p="sm">
+      <Group justify="space-between" mb="xs">
+        <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+        <Text size="xs" c="dimmed">{plots.length} plot{plots.length === 1 ? "" : "s"}</Text>
+      </Group>
+      {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
+      <Group gap={6} mb="sm">
+        <MapPinLine size={15} color="var(--mantine-color-green-7)" />
+        <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
+      </Group>
+
+      <Stack gap={6}>
+        {plots.map((p) => (
+          <Paper key={p.id} withBorder radius="sm" p={8} bg="gray.0">
+            <Group justify="space-between" wrap="nowrap">
+              <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
+                  <Text size="xs" c="dimmed">Plot {p.seq} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+                </div>
+              </Group>
+            </Group>
+          </Paper>
+        ))}
+      </Stack>
+
+      <Button mt="sm" size="xs" variant="subtle" leftSection={<Plus size={14} />} onClick={plotModal.open}>
+        Add plot
+      </Button>
+      <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
+    </Card>
+  );
+}
+
+// ---- Reusable location capture row ----
+function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCapture: (l: SessionLocation) => void }) {
+  const [busy, setBusy] = useState(false);
+  const capture = async () => {
+    setBusy(true);
+    try {
+      onCapture(await getCurrentLocation());
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not get location" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Group justify="space-between">
+        <Group gap={8}>
+          <ThemeIcon variant="light" color={loc ? "teal" : "gray"} radius="xl">
+            {loc ? <CheckCircle size={18} weight="fill" /> : <Crosshair size={18} />}
+          </ThemeIcon>
+          <div>
+            <Text size="sm" fw={500}>{loc ? "Location captured" : "Geolocation"}</Text>
+            <Text size="xs" c="dimmed">
+              {loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : "Not captured yet"}
+            </Text>
+          </div>
+        </Group>
+        <Button size="xs" variant={loc ? "light" : "filled"} loading={busy} onClick={capture}>
+          {loc ? "Recapture" : "Capture"}
+        </Button>
+      </Group>
+    </Paper>
+  );
+}
+
+function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: () => void; farmer: Farmer }) {
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [loc, setLoc] = useState<SessionLocation | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => { setPhoto(null); setLoc(null); };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const id = await nextFarmId(farmer.villageCode);
+      let photoId: string | null = null;
+      if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: Date.now() }); }
+      const now = Date.now();
+      await db.farms.add({
+        id, farmerId: farmer.id, villageCode: farmer.villageCode, photoId,
+        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+        createdAt: now, updatedAt: now, synced: false,
+      });
+      await db.farmers.update(farmer.id, { updatedAt: now, synced: false });
+      notifications.show({ color: "green", message: `Farm ${id} added` });
+      reset();
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Add farm" centered radius="lg">
+      <Stack gap="md">
+        <PhotoInput label="Farm photo" value={photo} onChange={setPhoto} height={160} />
+        <LocationCapture loc={loc} onCapture={setLoc} />
+        <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>Save farm</Button>
+      </Stack>
+    </Modal>
+  );
+}
+
+function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () => void; farm: Farm }) {
+  const [crop, setCrop] = useState("");
+  const [loc, setLoc] = useState<SessionLocation | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { id, seq } = await nextPlotId(farm.id);
+      const now = Date.now();
+      await db.plots.add({
+        id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
+        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+        createdAt: now, updatedAt: now, synced: false,
+      });
+      await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
+      notifications.show({ color: "green", message: `Plot ${seq} added` });
+      setCrop(""); setLoc(null);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`} centered radius="lg">
+      <Stack gap="md">
+        <LocationCapture loc={loc} onCapture={setLoc} />
+        <TextInput label="Crop" placeholder="e.g. Groundnut" value={crop}
+          onChange={(e) => setCrop(e.currentTarget.value)} leftSection={<Plant size={16} />} data-autofocus />
+        <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
+      </Stack>
+    </Modal>
+  );
+}
