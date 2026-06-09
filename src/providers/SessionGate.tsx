@@ -7,7 +7,7 @@ import {
 } from "@mantine/core";
 import { MapPinLine, WarningCircle, Compass } from "@phosphor-icons/react";
 import { currentUser, type AuthUser } from "@/lib/auth";
-import { getCurrentLocation, fmtCoord } from "@/lib/location";
+import { getCurrentLocation, saveLastLocation, getLastLocation } from "@/lib/location";
 import type { SessionLocation } from "@/lib/types";
 
 interface SessionCtx {
@@ -35,13 +35,25 @@ export default function SessionGate({ children }: { children: React.ReactNode })
     setLocErr("");
     try {
       const l = await getCurrentLocation();
+      saveLastLocation(l);
       setLoc(l);
       setLocState("idle");
       return l;
     } catch (e: any) {
+      // Fall back to the last known location (e.g. offline on a laptop with no
+      // GPS) so onboarding isn't blocked. Per-farm/plot capture still gets a
+      // fresh fix at the actual location.
+      const cached = getLastLocation();
+      if (cached) {
+        setLoc(cached);
+        setLocState("idle");
+        return cached;
+      }
       const msg =
         e?.code === 1
           ? "Location permission denied. Please allow location access in your browser settings."
+          : !navigator.onLine
+          ? "Can't get location offline yet. Connect once to capture it, then you can work offline."
           : e?.message || "Could not get your location. Try again.";
       setLocErr(msg);
       setLocState("error");
