@@ -1,8 +1,15 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v2";
+const CACHE = "farmer-onboarding-v3";
+const SHELLS = ["/", "/home/", "/farmer/", "/login/"];
 
-self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.allSettled(SHELLS.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
+  );
+});
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
@@ -15,27 +22,34 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
-  if (new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
 
-  // Navigations: network-first. IMPORTANT: a service worker must NOT return a
-  // *redirected* response to a navigation (browsers fail it with ERR_FAILED),
-  // so rebuild a clean response when the fetch followed a redirect (e.g. the
-  // trailingSlash 308 on /farmer -> /farmer/).
+  // Navigations: network-first, cached per PATH (ignoring ?query) so a route
+  // like /farmer/?id=123 reuses the cached /farmer/ shell offline. Offline
+  // falls back to that same-path shell — NOT to home — so opening a farmer
+  // offline shows the farmer page, which reads ?id from the URL client-side.
   if (req.mode === "navigate") {
+    const shellKey = url.origin + url.pathname;          // strip query
     e.respondWith((async () => {
       try {
         const res = await fetch(req);
-        if (res.redirected) {
-          const body = await res.blob();
-          return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
-        }
+        const clean = res.redirected
+          ? new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers })
+          : res;
         if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          const copy = clean.clone();
+          caches.open(CACHE).then((c) => c.put(shellKey, copy)).catch(() => {});
         }
-        return res;
+        return clean;
       } catch {
-        return (await caches.match(req)) || (await caches.match("/")) || Response.error();
+        return (
+          (await caches.match(shellKey)) ||
+          (await caches.match(url.pathname)) ||
+          (await caches.match("/home/")) ||
+          (await caches.match("/")) ||
+          Response.error()
+        );
       }
     })());
     return;
