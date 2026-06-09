@@ -26,7 +26,15 @@ import { apiSync } from "@/lib/api";
 function HomeInner() {
   const router = useRouter();
   const { location } = useSession();
-  const [village, setVillage] = useState(VILLAGES[0].code);
+  // Persist the selected village so it survives navigation/reload (and offline).
+  const [village, setVillageState] = useState<string>(() => {
+    try { return localStorage.getItem("fo_selected_village") || VILLAGES[0].code; }
+    catch { return VILLAGES[0].code; }
+  });
+  const setVillage = (v: string) => {
+    setVillageState(v);
+    try { localStorage.setItem("fo_selected_village", v); } catch {}
+  };
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
