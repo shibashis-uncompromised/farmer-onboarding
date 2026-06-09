@@ -2,17 +2,14 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Button, Center, Group, Loader, Paper, Stack, Text, ThemeIcon, Title,
-} from "@mantine/core";
-import { MapPinLine, WarningCircle, Compass } from "@phosphor-icons/react";
+import { Center, Loader } from "@mantine/core";
 import { currentUser, type AuthUser } from "@/lib/auth";
 import { getCurrentLocation, saveLastLocation, getLastLocation } from "@/lib/location";
 import type { SessionLocation } from "@/lib/types";
 
 interface SessionCtx {
   user: AuthUser;
-  location: SessionLocation;
+  location: SessionLocation | null;          // best-effort; may be null (captured on demand)
   refreshLocation: () => Promise<SessionLocation>;
 }
 const Ctx = createContext<SessionCtx | null>(null);
@@ -22,43 +19,21 @@ export const useSession = () => {
   return v;
 };
 
+// Auth-only gate. Location is NOT required up front (it was looping on
+// page changes / when offline). Geolocation is captured on demand where it
+// matters — adding a farm or plot. We still keep a best-effort background fix
+// for display, but it never blocks navigation.
 export default function SessionGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checked, setChecked] = useState(false);
-  const [loc, setLoc] = useState<SessionLocation | null>(null);
-  const [locState, setLocState] = useState<"idle" | "loading" | "error">("idle");
-  const [locErr, setLocErr] = useState("");
+  const [loc, setLoc] = useState<SessionLocation | null>(() => getLastLocation());
 
-  const fetchLoc = useCallback(async () => {
-    setLocState("loading");
-    setLocErr("");
-    try {
-      const l = await getCurrentLocation();
-      saveLastLocation(l);
-      setLoc(l);
-      setLocState("idle");
-      return l;
-    } catch (e: any) {
-      // Fall back to the last known location (e.g. offline on a laptop with no
-      // GPS) so onboarding isn't blocked. Per-farm/plot capture still gets a
-      // fresh fix at the actual location.
-      const cached = getLastLocation();
-      if (cached) {
-        setLoc(cached);
-        setLocState("idle");
-        return cached;
-      }
-      const msg =
-        e?.code === 1
-          ? "Location permission denied. Please allow location access in your browser settings."
-          : !navigator.onLine
-          ? "Can't get location offline yet. Connect once to capture it, then you can work offline."
-          : e?.message || "Could not get your location. Try again.";
-      setLocErr(msg);
-      setLocState("error");
-      throw e;
-    }
+  const refreshLocation = useCallback(async () => {
+    const l = await getCurrentLocation();
+    saveLastLocation(l);
+    setLoc(l);
+    return l;
   }, []);
 
   useEffect(() => {
@@ -69,8 +44,9 @@ export default function SessionGate({ children }: { children: React.ReactNode })
     }
     setUser(u);
     setChecked(true);
-    fetchLoc().catch(() => {});
-  }, [router, fetchLoc]);
+    // best-effort, non-blocking — never gates the UI
+    getCurrentLocation().then((l) => { saveLastLocation(l); setLoc(l); }).catch(() => {});
+  }, [router]);
 
   if (!checked || !user) {
     return (
@@ -80,37 +56,8 @@ export default function SessionGate({ children }: { children: React.ReactNode })
     );
   }
 
-  // Mandatory location gate
-  if (!loc) {
-    return (
-      <Center h="100dvh" p="lg" style={{ background: "var(--mantine-color-gray-0)" }}>
-        <Paper withBorder radius="lg" p="xl" shadow="sm" maw={380} w="100%">
-          <Stack align="center" gap="md">
-            <ThemeIcon size={72} radius="xl" variant="light" color={locState === "error" ? "red" : "green"}>
-              {locState === "error" ? <WarningCircle size={40} /> : <MapPinLine size={40} weight="duotone" />}
-            </ThemeIcon>
-            <Title order={3} ta="center">Location required</Title>
-            <Text c="dimmed" ta="center" size="sm">
-              {locState === "error"
-                ? locErr
-                : "We need your current location to continue with field onboarding."}
-            </Text>
-            <Button
-              fullWidth size="md" radius="md"
-              loading={locState === "loading"}
-              leftSection={<Compass size={18} />}
-              onClick={() => fetchLoc().catch(() => {})}
-            >
-              {locState === "error" ? "Try again" : "Enable location"}
-            </Button>
-          </Stack>
-        </Paper>
-      </Center>
-    );
-  }
-
   return (
-    <Ctx.Provider value={{ user, location: loc, refreshLocation: fetchLoc }}>
+    <Ctx.Provider value={{ user, location: loc, refreshLocation }}>
       {children}
     </Ctx.Provider>
   );

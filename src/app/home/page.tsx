@@ -152,10 +152,12 @@ function HomeInner() {
             leftSection={<MapPin size={18} />}
             styles={{ input: { fontWeight: 600 } }}
           />
-          <Group gap={6} mt={6} c="green.1">
-            <MapPin size={13} />
-            <Text size="xs">Location locked · {location.lat.toFixed(4)}, {location.lng.toFixed(4)}</Text>
-          </Group>
+          {location && (
+            <Group gap={6} mt={6} c="green.1">
+              <MapPin size={13} />
+              <Text size="xs">Location · {location.lat.toFixed(4)}, {location.lng.toFixed(4)}</Text>
+            </Group>
+          )}
         </Container>
       </Box>
 
