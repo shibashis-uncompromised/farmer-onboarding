@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import {
-  ActionIcon, Badge, Button, Card, Group, Image, Modal, Paper, Stack, Text,
-  TextInput, ThemeIcon,
+  ActionIcon, Badge, Button, Card, Group, Image, Modal, Paper, Select, Stack, Text,
+  ThemeIcon,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -15,8 +15,8 @@ import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getCurrentLocation, fmtCoord } from "@/lib/location";
 import type { Farmer, Farm, SessionLocation } from "@/lib/types";
+import { CROPS } from "@/lib/crops";
 import PhotoInput from "./PhotoInput";
-import { blurOnEnter } from "@/lib/ui";
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -190,8 +190,9 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
     <Modal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`} centered radius="lg">
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
-        <TextInput label="Crop" placeholder="e.g. Groundnut" value={crop}
-          onChange={(e) => setCrop(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" leftSection={<Plant size={16} />} data-autofocus />
+        <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
+          onChange={(v) => setCrop(v || "")} leftSection={<Plant size={16} />}
+          checkIconPosition="right" searchable data-autofocus />
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
       </Stack>
     </Modal>

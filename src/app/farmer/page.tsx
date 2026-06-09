@@ -3,9 +3,9 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  ActionIcon, Box, Center, Container, Group, Loader, Paper, Stepper, Text, Title,
+  ActionIcon, Box, Button, Center, Container, Group, Loader, Paper, Stepper, Text, Title,
 } from "@mantine/core";
-import { ArrowLeft, IdentificationCard, Tree, CheckCircle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Check, IdentificationCard, Tree, CheckCircle } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
@@ -93,6 +93,25 @@ function FarmerInner() {
             <FarmsStep farmer={farmer} />
           )}
         </Paper>
+
+        {active === 0 ? (
+          farmer.bioComplete && (
+            <Button fullWidth size="md" mt="md" color="green"
+              rightSection={<ArrowRight size={18} weight="bold" />}
+              onClick={() => setActive(1)}>
+              Continue to Farms &amp; Plots
+            </Button>
+          )
+        ) : (
+          <Group justify="space-between" mt="md">
+            <Button variant="default" leftSection={<ArrowLeft size={18} />} onClick={() => setActive(0)}>
+              Bio Data
+            </Button>
+            <Button color="teal" leftSection={<Check size={18} weight="bold" />} onClick={() => router.push("/home")}>
+              Done
+            </Button>
+          </Group>
+        )}
       </Container>
     </Box>
   );
