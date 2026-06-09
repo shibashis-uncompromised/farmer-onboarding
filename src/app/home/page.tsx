@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ActionIcon, Affix, Box, Button, Center, Container, Group, Menu, Paper,
+  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Menu, Paper,
   ScrollArea, Select, Stack, Text, TextInput, Title, UnstyledButton,
 } from "@mantine/core";
 import {
@@ -81,9 +81,12 @@ function HomeInner() {
       >
         <Container size="sm" pb="md" pt="xs">
           <Group justify="space-between" align="center" mb="sm">
-            <Group gap={8}>
-              <UsersThree size={26} weight="duotone" />
-              <Title order={4}>Farmer Onboarding</Title>
+            <Group gap={10}>
+              <Image src="/icons/logo.png" alt="Uncompromised" w={38} h={38} radius="md" />
+              <div>
+                <Text fw={700} fz={9} style={{ letterSpacing: 1, opacity: 0.85 }}>UNCOMPROMISED</Text>
+                <Title order={4} lh={1.1}>Farmer Onboarding</Title>
+              </div>
             </Group>
             <Menu position="bottom-end" withArrow shadow="md">
               <Menu.Target>

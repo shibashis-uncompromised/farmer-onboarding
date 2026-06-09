@@ -7,6 +7,7 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmerId } from "@/lib/ids";
 import { VILLAGES } from "@/lib/villages";
+import { blurOnEnter } from "@/lib/ui";
 import type { Farmer } from "@/lib/types";
 
 interface Props {
@@ -62,9 +63,9 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
           value={village} onChange={(v) => setVillage(v || "")} allowDeselect={false} checkIconPosition="right"
         />
         <TextInput label="First name" placeholder="e.g. Motilal" value={first}
-          onChange={(e) => setFirst(e.currentTarget.value)} required data-autofocus />
+          onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required data-autofocus />
         <TextInput label="Last name" placeholder="e.g. Prathaji" value={last}
-          onChange={(e) => setLast(e.currentTarget.value)} required />
+          onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" required />
         <Group justify="flex-end" mt="xs">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button onClick={save} loading={saving} disabled={!canSave} leftSection={<UserPlus size={18} />}>

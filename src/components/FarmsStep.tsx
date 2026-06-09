@@ -16,6 +16,7 @@ import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getCurrentLocation, fmtCoord } from "@/lib/location";
 import type { Farmer, Farm, SessionLocation } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
+import { blurOnEnter } from "@/lib/ui";
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -190,7 +191,7 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
         <TextInput label="Crop" placeholder="e.g. Groundnut" value={crop}
-          onChange={(e) => setCrop(e.currentTarget.value)} leftSection={<Plant size={16} />} data-autofocus />
+          onChange={(e) => setCrop(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" leftSection={<Plant size={16} />} data-autofocus />
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
       </Stack>
     </Modal>

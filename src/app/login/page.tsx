@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Button, Center, PasswordInput, Paper, Stack, Text, TextInput, ThemeIcon, Title,
+  Button, Center, Image, PasswordInput, Paper, Stack, Text, TextInput, Title,
 } from "@mantine/core";
-import { Plant, SignIn } from "@phosphor-icons/react";
+import { SignIn } from "@phosphor-icons/react";
 import { login } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -33,9 +33,8 @@ export default function LoginPage() {
       <Paper radius="lg" p="xl" shadow="xl" maw={400} w="100%">
         <Stack gap="lg">
           <Stack align="center" gap={6}>
-            <ThemeIcon size={64} radius="xl" variant="light" color="green">
-              <Plant size={36} weight="duotone" />
-            </ThemeIcon>
+            <Image src="/icons/logo.png" alt="Uncompromised" w={68} h={68} radius="lg" />
+            <Text fw={700} size="xs" c="green.7" style={{ letterSpacing: 1.4 }}>UNCOMPROMISED</Text>
             <Title order={2} ta="center">Farmer Onboarding</Title>
             <Text c="dimmed" size="sm" ta="center">Sign in to start field onboarding</Text>
           </Stack>

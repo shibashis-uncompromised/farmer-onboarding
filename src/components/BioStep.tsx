@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
 import type { Farmer } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
+import { blurOnEnter } from "@/lib/ui";
 
 const RELATIONS = ["S/o", "W/o", "D/o", "C/o"];
 
@@ -113,8 +114,8 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
         onChange={(b) => { setPhoto(b); setPhotoDirty(true); }}
       />
       <SimpleGrid cols={2} spacing="sm">
-        <TextInput label="First name" value={first} onChange={(e) => setFirst(e.currentTarget.value)} required />
-        <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} required />
+        <TextInput label="First name" value={first} onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
+        <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
       </SimpleGrid>
 
       <Divider label="Care of (guardian / spouse)" labelPosition="left" />
@@ -124,14 +125,14 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
         />
       </Group>
       <SimpleGrid cols={2} spacing="sm">
-        <TextInput label="C/o first name" value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} />
-        <TextInput label="C/o last name" value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} />
+        <TextInput label="C/o first name" value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" />
+        <TextInput label="C/o last name" value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" />
       </SimpleGrid>
 
       <Divider />
       <TextInput
         label="Phone number" type="tel" inputMode="numeric" value={phone}
-        onChange={(e) => setPhone(e.currentTarget.value)} placeholder="10-digit mobile"
+        onChange={(e) => setPhone(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" placeholder="10-digit mobile"
       />
       <div>
         <Text size="sm" fw={500} mb={6}>

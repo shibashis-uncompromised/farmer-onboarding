@@ -3,11 +3,11 @@ import type { Farmer, OnboardingStatus } from "./types";
 export function computeStatus(
   farmer: Pick<Farmer, "bioComplete">,
   farmCount: number,
-  plotCount: number
+  _plotCount?: number
 ): OnboardingStatus {
-  if (farmer.bioComplete && farmCount > 0 && plotCount > 0) return "completed";
-  if (!farmer.bioComplete && farmCount === 0) return "not_started";
-  return "pending";
+  if (farmCount > 0) return "completed";        // at least one farm added
+  if (farmer.bioComplete) return "pending";     // bio saved, no farm yet
+  return "not_started";                          // nothing yet
 }
 
 export const STATUS_META: Record<
