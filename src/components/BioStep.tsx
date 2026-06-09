@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import {
   Avatar, Badge, Button, Divider, Group, SegmentedControl, SimpleGrid, Stack,
-  Text, TextInput,
+  Text, Textarea, TextInput,
 } from "@mantine/core";
-import { PencilSimple, FloppyDisk, CheckCircle, DeviceMobile } from "@phosphor-icons/react";
+import { PencilSimple, FloppyDisk, CheckCircle, DeviceMobile, NotePencil } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
@@ -27,6 +27,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
   const [smartphone, setSmartphone] = useState<string>(
     farmer.hasSmartphone == null ? "" : farmer.hasSmartphone ? "yes" : "no"
   );
+  const [note, setNote] = useState(farmer.note || "");
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoDirty, setPhotoDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -63,6 +64,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
         firstName: first.trim(), lastName: last.trim(),
         coFirstName: coFirst.trim(), coLastName: coLast.trim(), coRelation: relation,
         phone: phone.trim(), hasSmartphone: smartphone === "" ? null : smartphone === "yes",
+        note: note.trim(),
         photoId, bioComplete: true, updatedAt: Date.now(), synced: false,
       });
       setPhotoDirty(false);
@@ -102,6 +104,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
           <Field label="Phone" value={phone || "—"} />
           <Field label="Smartphone" value={smartphone === "yes" ? "Yes" : smartphone === "no" ? "No" : "—"} />
         </SimpleGrid>
+        {note.trim() && <Field label="Note" value={note} />}
       </Stack>
     );
   }
@@ -143,6 +146,13 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
           data={[{ label: "Yes", value: "yes" }, { label: "No", value: "no" }]}
         />
       </div>
+
+      <Textarea
+        label={<Group gap={6} component="span"><NotePencil size={16} /> Note (optional)</Group>}
+        placeholder="Any note from the onboarding team…"
+        value={note} onChange={(e) => setNote(e.currentTarget.value)}
+        autosize minRows={2} maxRows={5}
+      />
 
       <Button size="md" leftSection={<FloppyDisk size={18} />} onClick={save} loading={saving} disabled={!canSave}>
         Save bio data

@@ -1,37 +1,32 @@
-// Local-only auth gate (works fully offline). Replace with real auth when the
-// backend is added — keep the same isAuthed()/login()/logout() surface.
+// Auth backed by the server. First sign-in must be online (to authenticate and
+// receive the device's ID block); afterwards the stored session lets the app
+// open and work fully offline.
 
-const AUTH_KEY = "fo_auth_v1";
+import { apiLogin } from "./api";
+import { getSession, setSession, clearSession } from "./session";
 
-// Preset local credentials. Change as needed (or wire to backend later).
-const USERS: Record<string, string> = {
-  admin: "admin123",
-  field: "field123",
-};
+export interface AuthUser { username: string; }
 
-export interface AuthUser {
-  username: string;
-  at: number;
-}
-
-export function login(username: string, password: string): AuthUser | null {
-  const u = username.trim().toLowerCase();
-  if (USERS[u] && USERS[u] === password) {
-    const user: AuthUser = { username: u, at: Date.now() };
-    localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-    return user;
-  }
-  return null;
+export async function login(username: string, password: string): Promise<AuthUser> {
+  const data = await apiLogin(username, password);
+  const prev = getSession();
+  // keep the local "used" cursor when the same user signs in again on this device
+  const used = prev && prev.username === data.username ? prev.used : 0;
+  setSession({
+    token: data.token,
+    username: data.username,
+    blockSize: data.blockSize,
+    blocks: data.blocks,
+    used,
+  });
+  return { username: data.username };
 }
 
 export function currentUser(): AuthUser | null {
-  try {
-    return JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
-  } catch {
-    return null;
-  }
+  const s = getSession();
+  return s ? { username: s.username } : null;
 }
 
 export function logout() {
-  localStorage.removeItem(AUTH_KEY);
+  clearSession();
 }

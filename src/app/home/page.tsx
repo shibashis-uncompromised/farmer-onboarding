@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
-  CaretRight, UsersThree, MapPin,
+  CaretRight, UsersThree, MapPin, CloudArrowUp,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -20,6 +20,8 @@ import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
+import { getSession } from "@/lib/session";
+import { apiSync } from "@/lib/api";
 
 function HomeInner() {
   const router = useRouter();
@@ -28,6 +30,7 @@ function HomeInner() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const farmers = useLiveQuery(
     () => db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt"),
@@ -35,6 +38,11 @@ function HomeInner() {
   );
   const farms = useLiveQuery(() => db.farms.toArray(), []);
   const plots = useLiveQuery(() => db.plots.toArray(), []);
+
+  const unsynced = useLiveQuery(async () => {
+    const [f, fm, p] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
+    return f.filter((x) => !x.synced).length + fm.filter((x) => !x.synced).length + p.filter((x) => !x.synced).length;
+  }, []) ?? 0;
 
   const counts = useMemo(() => {
     const fc = new Map<string, number>();
@@ -69,6 +77,33 @@ function HomeInner() {
     }
   };
 
+  const doSync = async () => {
+    const s = getSession();
+    if (!s) { notifications.show({ color: "red", message: "Not signed in" }); return; }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      notifications.show({ color: "red", message: "You're offline — connect to sync" }); return;
+    }
+    setSyncing(true);
+    try {
+      const [f, fm, p] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
+      const uf = f.filter((x) => !x.synced), um = fm.filter((x) => !x.synced), up = p.filter((x) => !x.synced);
+      if (!uf.length && !um.length && !up.length) {
+        notifications.show({ message: "Everything is already synced" }); return;
+      }
+      await apiSync(s.token, { farmers: uf, farms: um, plots: up });
+      await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
+        for (const x of uf) await db.farmers.update(x.id, { synced: true });
+        for (const x of um) await db.farms.update(x.id, { synced: true });
+        for (const x of up) await db.plots.update(x.id, { synced: true });
+      });
+      notifications.show({ color: "green", message: `Synced ${uf.length} farmers · ${um.length} farms · ${up.length} plots` });
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Sync failed" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <Box mih="100dvh" style={{ background: "var(--mantine-color-gray-0)" }}>
       {/* Header */}
@@ -95,6 +130,10 @@ function HomeInner() {
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncing}
+                  rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
+                  {syncing ? "Syncing…" : "Sync to server"}
+                </Menu.Item>
                 <Menu.Item leftSection={<DownloadSimple size={16} />} onClick={doExport} disabled={exporting}>
                   {exporting ? "Exporting…" : "Export all (ZIP)"}
                 </Menu.Item>

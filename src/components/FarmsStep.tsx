@@ -146,6 +146,8 @@ function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: (
       notifications.show({ color: "green", message: `Farm ${id} added` });
       reset();
       onClose();
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not add farm" });
     } finally {
       setSaving(false);
     }

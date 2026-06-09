@@ -14,6 +14,7 @@ export interface Farmer {
   coRelation: string;    // e.g. S/o, W/o, D/o
   phone: string;
   hasSmartphone: boolean | null;
+  note: string;             // optional note from the onboarding team
   photoId: string | null;   // -> media table
   bioComplete: boolean;
   createdAt: number;

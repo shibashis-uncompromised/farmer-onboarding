@@ -43,13 +43,15 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
         id, villageCode: village,
         firstName: first.trim(), lastName: last.trim(),
         coFirstName: "", coLastName: "", coRelation: "", phone: "",
-        hasSmartphone: null, photoId: null, bioComplete: false,
+        hasSmartphone: null, note: "", photoId: null, bioComplete: false,
         createdAt: now, updatedAt: now, synced: false,
       };
       await db.farmers.add(farmer);
       notifications.show({ color: "green", message: `Farmer ${id} created` });
       onCreated(id);
       onClose();
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not create farmer" });
     } finally {
       setSaving(false);
     }

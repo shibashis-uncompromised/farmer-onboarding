@@ -15,15 +15,16 @@ export default function LoginPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
-    const u = login(username, password);
-    if (u) {
+    try {
+      await login(username, password);
       router.replace("/home");
-    } else {
-      setErr("Invalid username or password");
+    } catch (err: any) {
+      const offline = typeof navigator !== "undefined" && !navigator.onLine;
+      setErr(offline ? "You're offline — first sign-in needs internet." : (err?.message || "Login failed"));
       setLoading(false);
     }
   };

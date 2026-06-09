@@ -1,37 +1,25 @@
 import { db } from "./db";
 import { REGION_PREFIX, villageByCode } from "./villages";
+import { allocateNumber } from "./session";
 
 const pad3 = (n: number) => String(n).padStart(3, "0");
+const ab = (villageCode: string) => villageByCode(villageCode)?.idCode || villageCode;
 
-// village (numeric) code -> ID abbreviation (e.g. "001" -> "VELA")
-const idCodeOf = (villageCode: string) => villageByCode(villageCode)?.idCode || villageCode;
-
-// Next farmer id: RJ-{idCode}-U{seq}. Sequence is per idCode, so villages that
-// share an idCode (Belua 1 & 2 → BELU) share one running sequence.
+// Farmer & farm numbers come from the user's allocated ID block, so two offline
+// devices never produce the same id. The village abbreviation is the label.
+//   Farmer: RJ-VELA-U001   ·   Farm: RJ-VELA-F001
 export async function nextFarmerId(villageCode: string): Promise<string> {
-  const ab = idCodeOf(villageCode);
-  const re = new RegExp(`^${REGION_PREFIX}-${ab}-U(\\d+)$`);
-  const farmers = await db.farmers.toArray();
-  const max = farmers.reduce((m, f) => {
-    const mm = f.id.match(re);
-    return mm ? Math.max(m, parseInt(mm[1], 10)) : m;
-  }, 0);
-  return `${REGION_PREFIX}-${ab}-U${pad3(max + 1)}`;
+  const n = await allocateNumber();
+  return `${REGION_PREFIX}-${ab(villageCode)}-U${pad3(n)}`;
 }
 
-// Next farm id: RJ-{idCode}-F{seq}
 export async function nextFarmId(villageCode: string): Promise<string> {
-  const ab = idCodeOf(villageCode);
-  const re = new RegExp(`^${REGION_PREFIX}-${ab}-F(\\d+)$`);
-  const farms = await db.farms.toArray();
-  const max = farms.reduce((m, f) => {
-    const mm = f.id.match(re);
-    return mm ? Math.max(m, parseInt(mm[1], 10)) : m;
-  }, 0);
-  return `${REGION_PREFIX}-${ab}-F${pad3(max + 1)}`;
+  const n = await allocateNumber();
+  return `${REGION_PREFIX}-${ab(villageCode)}-F${pad3(n)}`;
 }
 
-// Next plot id within a farm: {farmId}/{seq}  e.g. RJ-FTHP-F001/001
+// Plots are scoped to their farm, so a local per-farm sequence is collision-safe:
+//   {farmId}/{seq}   e.g. RJ-VELA-F001/001
 export async function nextPlotId(farmId: string): Promise<{ id: string; seq: string }> {
   const existing = await db.plots.where("farmId").equals(farmId).toArray();
   const max = existing.reduce((m, p) => {
