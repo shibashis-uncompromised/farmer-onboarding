@@ -26,10 +26,10 @@ export const apiLogin = (username: string, password: string): Promise<LoginResp>
 // NOTE: the token is sent in the BODY (not just the Authorization header)
 // because CloudFront strips Authorization but always forwards the POST body.
 export const apiAllocate = (token: string) =>
-  req("/api/id-blocks/allocate", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ token }) });
+  req("/api/id-blocks/allocate", { method: "POST", body: JSON.stringify({ token }) });
 
 export const apiSync = (token: string, payload: object) =>
-  req("/api/sync", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ token, ...payload }) });
+  req("/api/sync", { method: "POST", body: JSON.stringify({ token, ...payload }) });
 
 export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[]; media?: any[] }> =>
-  req("/api/pull", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ token }) });
+  req("/api/pull", { method: "POST", body: JSON.stringify({ token }) });
