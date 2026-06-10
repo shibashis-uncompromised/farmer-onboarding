@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
-  CaretRight, UsersThree, MapPin, CloudArrowUp,
+  CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -20,11 +20,10 @@ import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
-import { syncAll } from "@/lib/sync";
 
 function HomeInner() {
   const router = useRouter();
-  const { location } = useSession();
+  const { location, syncState, syncNow } = useSession();
   // Persist the selected village so it survives navigation/reload (and offline).
   const [village, setVillageState] = useState<string>(() => {
     try { return localStorage.getItem("fo_selected_village") || VILLAGES[0].code; }
@@ -37,7 +36,6 @@ function HomeInner() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
 
   const farmers = useLiveQuery(
     () => db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt"),
@@ -85,15 +83,9 @@ function HomeInner() {
   };
 
   const doSync = async () => {
-    setSyncing(true);
-    try {
-      const { pushed, pulled } = await syncAll();
-      notifications.show({ color: "green", message: `Synced ✓  ↑ ${pushed} uploaded · ↓ ${pulled} downloaded` });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Sync failed" });
-    } finally {
-      setSyncing(false);
-    }
+    const r = await syncNow();
+    if (r) notifications.show({ color: "green", message: `Synced ✓  ↑ ${r.pushed} · ↓ ${r.pulled}` });
+    else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: "You're offline" });
   };
 
   return (
@@ -115,16 +107,26 @@ function HomeInner() {
                 <Title order={4} lh={1.1}>Farmer Onboarding</Title>
               </div>
             </Group>
-            <Menu position="bottom-end" withArrow shadow="md">
+            <Group gap={2}>
+              <ActionIcon
+                variant="subtle" color="gray.0" size="lg" onClick={doSync} aria-label="Sync"
+                title={syncState === "offline" ? "Offline" : syncState === "error" ? "Sync issue — tap to retry" : syncState === "syncing" ? "Syncing…" : "Synced"}
+              >
+                {syncState === "syncing" ? <ArrowsClockwise size={20} className="fo-spin" />
+                  : syncState === "offline" ? <CloudSlash size={20} />
+                  : syncState === "error" ? <WarningCircle size={20} />
+                  : <CloudCheck size={20} />}
+              </ActionIcon>
+              <Menu position="bottom-end" withArrow shadow="md">
               <Menu.Target>
                 <ActionIcon variant="subtle" color="gray.0" size="lg" aria-label="Menu">
                   <DotsThreeVertical size={24} weight="bold" />
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncing}
+                <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncState === "syncing"}
                   rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
-                  {syncing ? "Syncing…" : "Sync to server"}
+                  {syncState === "syncing" ? "Syncing…" : "Sync now"}
                 </Menu.Item>
                 <Menu.Item leftSection={<DownloadSimple size={16} />} onClick={doExport} disabled={exporting}>
                   {exporting ? "Exporting…" : "Export all (ZIP)"}
@@ -134,7 +136,8 @@ function HomeInner() {
                   Sign out
                 </Menu.Item>
               </Menu.Dropdown>
-            </Menu>
+              </Menu>
+            </Group>
           </Group>
 
           <Select

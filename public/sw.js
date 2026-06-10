@@ -1,6 +1,11 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v5";
+const CACHE = "farmer-onboarding-v6";
+
+// Build-time list of all JS/CSS/font chunks (written by scripts/gen-sw-manifest.mjs).
+try { importScripts("/sw-manifest.js"); } catch (e) {}
+const CHUNKS = self.__PRECACHE_MANIFEST || [];
+
 const SHELLS = [
   "/", "/home/", "/farmer/", "/login/",
   "/manifest.webmanifest",
@@ -11,7 +16,7 @@ const SHELLS = [
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => Promise.allSettled(SHELLS.map((u) => c.add(u))))
+      .then((c) => Promise.allSettled([...SHELLS, ...CHUNKS].map((u) => c.add(u))))
       .then(() => self.skipWaiting())
   );
 });

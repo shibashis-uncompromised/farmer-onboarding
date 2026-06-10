@@ -5,3 +5,6 @@ body {
   overscroll-behavior-y: none;
 }
 input, textarea, select, button { font-size: 16px; } /* avoid iOS zoom on focus */
+
+@keyframes fo-spin { to { transform: rotate(360deg); } }
+.fo-spin { animation: fo-spin 0.9s linear infinite; }
