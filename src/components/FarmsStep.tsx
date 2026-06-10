@@ -135,7 +135,7 @@ function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: (
     try {
       const id = await nextFarmId(farmer.villageCode);
       let photoId: string | null = null;
-      if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: Date.now() }); }
+      if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: Date.now(), synced: false }); }
       const now = Date.now();
       await db.farms.add({
         id, farmerId: farmer.id, villageCode: farmer.villageCode, photoId,

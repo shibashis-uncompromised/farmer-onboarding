@@ -31,5 +31,5 @@ export const apiAllocate = (token: string) =>
 export const apiSync = (token: string, payload: object) =>
   req("/api/sync", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ token, ...payload }) });
 
-export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[] }> =>
+export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[]; media?: any[] }> =>
   req("/api/pull", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ token }) });

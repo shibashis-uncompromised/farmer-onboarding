@@ -55,7 +55,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
         if (photoId) await db.media.delete(photoId).catch(() => {});
         if (photo) {
           photoId = uid();
-          await db.media.add({ id: photoId, blob: photo, createdAt: Date.now() });
+          await db.media.add({ id: photoId, blob: photo, createdAt: Date.now(), synced: false });
         } else {
           photoId = null;
         }

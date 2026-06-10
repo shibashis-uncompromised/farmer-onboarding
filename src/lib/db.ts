@@ -17,6 +17,12 @@ export class AppDB extends Dexie {
       plots: "id, farmId, farmerId, updatedAt",
       media: "id",
     });
+    this.version(2).stores({
+      farmers: "id, villageCode, bioComplete, updatedAt, lastName, firstName",
+      farms: "id, farmerId, villageCode, updatedAt",
+      plots: "id, farmId, farmerId, updatedAt",
+      media: "id, synced, createdAt",
+    });
   }
 }
 

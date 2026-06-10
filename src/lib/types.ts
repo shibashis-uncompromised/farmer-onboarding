@@ -53,6 +53,7 @@ export interface Media {
   id: string;            // uuid-ish
   blob: Blob;
   createdAt: number;
+  synced?: boolean;
 }
 
 export interface SessionLocation {
