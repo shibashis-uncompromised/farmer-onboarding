@@ -43,8 +43,8 @@ export async function allocateNumber(): Promise<number> {
 
   if (s.used >= capacity(s.blocks)) {
     if (!navigator.onLine) throw new Error("Out of offline IDs — connect to the internet to get more.");
-    const r = await apiAllocate(s.token);
-    s.blocks = r.blocks;
+    const r = await apiAllocate(s.token);   // claim ANOTHER dedicated block for this device
+    s.blocks.push(r.allocated);
     setSession(s);
   }
 
@@ -52,13 +52,5 @@ export async function allocateNumber(): Promise<number> {
   if (n == null) throw new Error("No IDs available");
   s.used += 1;
   setSession(s);
-
-  // proactive top-up so there's headroom for going offline
-  if (capacity(s.blocks) - s.used <= 10 && navigator.onLine) {
-    apiAllocate(s.token).then((r) => {
-      const cur = getSession();
-      if (cur) { cur.blocks = r.blocks; setSession(cur); }
-    }).catch(() => {});
-  }
   return n;
 }

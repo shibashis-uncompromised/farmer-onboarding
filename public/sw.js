@@ -1,7 +1,12 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v3";
-const SHELLS = ["/", "/home/", "/farmer/", "/login/"];
+const CACHE = "farmer-onboarding-v4";
+const SHELLS = [
+  "/", "/home/", "/farmer/", "/login/",
+  "/manifest.webmanifest",
+  "/icons/logo.png", "/icons/icon-192.png", "/icons/icon-512.png",
+  "/icons/apple-touch-icon.png", "/icons/maskable-512.png", "/icons/favicon.png",
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(

@@ -2,22 +2,22 @@
 // receive the device's ID block); afterwards the stored session lets the app
 // open and work fully offline.
 
-import { apiLogin } from "./api";
+import { apiLogin, apiAllocate } from "./api";
 import { getSession, setSession, clearSession } from "./session";
 
 export interface AuthUser { username: string; }
 
 export async function login(username: string, password: string): Promise<AuthUser> {
   const data = await apiLogin(username, password);
-  const prev = getSession();
-  // keep the local "used" cursor when the same user signs in again on this device
-  const used = prev && prev.username === data.username ? prev.used : 0;
+  // Claim a FRESH id block dedicated to this device, so two devices signed in
+  // with the same credentials never mint the same ids.
+  const alloc = await apiAllocate(data.token);   // { allocated: {start,end}, blocks: [...] }
   setSession({
     token: data.token,
     username: data.username,
     blockSize: data.blockSize,
-    blocks: data.blocks,
-    used,
+    blocks: [alloc.allocated],
+    used: 0,
   });
   return { username: data.username };
 }

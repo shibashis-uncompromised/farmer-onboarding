@@ -20,8 +20,7 @@ import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
-import { getSession } from "@/lib/session";
-import { apiSync } from "@/lib/api";
+import { syncAll } from "@/lib/sync";
 
 function HomeInner() {
   const router = useRouter();
@@ -86,25 +85,10 @@ function HomeInner() {
   };
 
   const doSync = async () => {
-    const s = getSession();
-    if (!s) { notifications.show({ color: "red", message: "Not signed in" }); return; }
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      notifications.show({ color: "red", message: "You're offline — connect to sync" }); return;
-    }
     setSyncing(true);
     try {
-      const [f, fm, p] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
-      const uf = f.filter((x) => !x.synced), um = fm.filter((x) => !x.synced), up = p.filter((x) => !x.synced);
-      if (!uf.length && !um.length && !up.length) {
-        notifications.show({ message: "Everything is already synced" }); return;
-      }
-      await apiSync(s.token, { farmers: uf, farms: um, plots: up });
-      await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
-        for (const x of uf) await db.farmers.update(x.id, { synced: true });
-        for (const x of um) await db.farms.update(x.id, { synced: true });
-        for (const x of up) await db.plots.update(x.id, { synced: true });
-      });
-      notifications.show({ color: "green", message: `Synced ${uf.length} farmers · ${um.length} farms · ${up.length} plots` });
+      const { pushed, pulled } = await syncAll();
+      notifications.show({ color: "green", message: `Synced ✓  ↑ ${pushed} uploaded · ↓ ${pulled} downloaded` });
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Sync failed" });
     } finally {
