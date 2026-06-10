@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v4";
+const CACHE = "farmer-onboarding-v5";
 const SHELLS = [
   "/", "/home/", "/farmer/", "/login/",
   "/manifest.webmanifest",

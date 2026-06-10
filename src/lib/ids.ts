@@ -1,21 +1,26 @@
 import { db } from "./db";
 import { REGION_PREFIX, villageByCode } from "./villages";
-import { allocateNumber } from "./session";
+import { allocateNumber, getSession } from "./session";
 
 const pad3 = (n: number) => String(n).padStart(3, "0");
 const ab = (villageCode: string) => villageByCode(villageCode)?.idCode || villageCode;
+
+// Per-user region prefix. The demo account uses DEMO- so its data is clearly
+// separate from real RJ- records.
+const PREFIX_BY_USER: Record<string, string> = { demo: "DEMO" };
+const regionPrefix = () => PREFIX_BY_USER[(getSession()?.username || "").toLowerCase()] || REGION_PREFIX;
 
 // Farmer & farm numbers come from the user's allocated ID block, so two offline
 // devices never produce the same id. The village abbreviation is the label.
 //   Farmer: RJ-VELA-U001   ·   Farm: RJ-VELA-F001
 export async function nextFarmerId(villageCode: string): Promise<string> {
   const n = await allocateNumber();
-  return `${REGION_PREFIX}-${ab(villageCode)}-U${pad3(n)}`;
+  return `${regionPrefix()}-${ab(villageCode)}-U${pad3(n)}`;
 }
 
 export async function nextFarmId(villageCode: string): Promise<string> {
   const n = await allocateNumber();
-  return `${REGION_PREFIX}-${ab(villageCode)}-F${pad3(n)}`;
+  return `${regionPrefix()}-${ab(villageCode)}-F${pad3(n)}`;
 }
 
 // Plots are scoped to their farm, so a local per-farm sequence is collision-safe:
