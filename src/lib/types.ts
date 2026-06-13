@@ -4,6 +4,12 @@
 
 export type OnboardingStatus = "not_started" | "pending" | "completed";
 
+// A seed package handed to / allocated for a farmer (e.g. Groundnut ×2).
+export interface SeedPackage {
+  seed: string;
+  qty: number;
+}
+
 export interface Farmer {
   id: string;            // RJ{village}U{seq}  e.g. RJ001U001
   villageCode: string;   // "001"
@@ -16,6 +22,7 @@ export interface Farmer {
   hasSmartphone: boolean | null;
   note: string;             // optional note from the onboarding team
   photoId: string | null;   // -> media table
+  seeds?: SeedPackage[];    // seed packages for this farmer (rides in the synced record)
   bioComplete: boolean;
   createdAt: number;
   updatedAt: number;

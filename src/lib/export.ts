@@ -2,6 +2,10 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { db } from "./db";
 import { villageByCode } from "./villages";
+import { seedsTotal } from "./seeds";
+
+const seedsText = (seeds?: { seed: string; qty: number }[]) =>
+  (seeds || []).map((s) => `${s.seed} x${s.qty}`).join("; ");
 
 const cell = (v: unknown) => {
   const s = v == null ? "" : String(v);
@@ -27,12 +31,13 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "farmers.csv",
     toCSV(
-      ["Farmer ID","First Name","Last Name","C/o First","C/o Last","Relation","Phone","Smartphone","Note","Village","Block","Bio Complete","Photo File","Created","Updated"],
+      ["Farmer ID","First Name","Last Name","C/o First","C/o Last","Relation","Phone","Smartphone","Note","Seeds","Total Packages","Village","Block","Bio Complete","Photo File","Created","Updated"],
       farmers.map((f) => {
         const v = villageByCode(f.villageCode);
         return [
           f.id, f.firstName, f.lastName, f.coFirstName, f.coLastName, f.coRelation,
           f.phone, f.hasSmartphone == null ? "" : f.hasSmartphone ? "Yes" : "No", f.note || "",
+          seedsText(f.seeds), seedsTotal(f.seeds) || "",
           v?.name || f.villageCode, v?.block || "", f.bioComplete ? "Yes" : "No",
           f.photoId ? `photos/${f.id}.jpg` : "", fmtTs(f.createdAt), fmtTs(f.updatedAt),
         ];

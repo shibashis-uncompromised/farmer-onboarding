@@ -6,6 +6,7 @@ import { UserPlus } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmerId } from "@/lib/ids";
+import { villageCodeFromId } from "@/lib/qr";
 import { VILLAGES } from "@/lib/villages";
 import { blurOnEnter } from "@/lib/ui";
 import type { Farmer } from "@/lib/types";
@@ -15,9 +16,10 @@ interface Props {
   onClose: () => void;
   defaultVillage: string;
   onCreated: (id: string) => void;
+  scannedCode?: string | null;   // when set, use this exact code as the id
 }
 
-export default function AddFarmerModal({ opened, onClose, defaultVillage, onCreated }: Props) {
+export default function AddFarmerModal({ opened, onClose, defaultVillage, onCreated, scannedCode }: Props) {
   const [village, setVillage] = useState(defaultVillage);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -25,11 +27,12 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
 
   useEffect(() => {
     if (opened) {
-      setVillage(defaultVillage);
+      // For a scanned code, default the village to the one encoded in the code.
+      setVillage((scannedCode && villageCodeFromId(scannedCode)) || defaultVillage);
       setFirst("");
       setLast("");
     }
-  }, [opened, defaultVillage]);
+  }, [opened, defaultVillage, scannedCode]);
 
   const canSave = first.trim().length > 0 && last.trim().length > 0 && !!village;
 
@@ -37,13 +40,26 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
     if (!canSave) return;
     setSaving(true);
     try {
-      const id = await nextFarmerId(village);
+      // Scanned codes are authoritative ids; otherwise allocate from the block.
+      const id = scannedCode ? scannedCode : await nextFarmerId(village);
+
+      // If a scanned farmer already exists, just open it instead of duplicating.
+      if (scannedCode) {
+        const existing = await db.farmers.get(id);
+        if (existing) {
+          notifications.show({ color: "blue", message: `${id} already exists — opening` });
+          onCreated(id);
+          onClose();
+          return;
+        }
+      }
+
       const now = Date.now();
       const farmer: Farmer = {
         id, villageCode: village,
         firstName: first.trim(), lastName: last.trim(),
         coFirstName: "", coLastName: "", coRelation: "", phone: "",
-        hasSmartphone: null, note: "", photoId: null, bioComplete: false,
+        hasSmartphone: null, note: "", photoId: null, seeds: [], bioComplete: false,
         createdAt: now, updatedAt: now, synced: false,
       };
       await db.farmers.add(farmer);
@@ -58,8 +74,11 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Add farmer" centered radius="lg">
+    <Modal opened={opened} onClose={onClose} title={scannedCode ? "New farmer (scanned)" : "Add farmer"} centered radius="lg">
       <Stack gap="md">
+        {scannedCode && (
+          <TextInput label="Scanned code" value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
+        )}
         <Select
           label="Village" data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} (${v.block})` }))}
           value={village} onChange={(v) => setVillage(v || "")} allowDeselect={false} checkIconPosition="right"

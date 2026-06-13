@@ -10,9 +10,10 @@ interface Props {
   onChange: (blob: Blob | null) => void;
   height?: number;
   label?: string;
+  compact?: boolean;   // small square thumbnail tile instead of a tall banner
 }
 
-export default function PhotoInput({ value, onChange, height = 200, label = "Photo" }: Props) {
+export default function PhotoInput({ value, onChange, height = 200, label = "Photo", compact = false }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,13 +40,47 @@ export default function PhotoInput({ value, onChange, height = 200, label = "Pho
     }
   };
 
+  const fileInput = (
+    <input
+      ref={inputRef} type="file" accept="image/*" capture="environment"
+      onChange={onFile} style={{ display: "none" }}
+    />
+  );
+
+  // Compact: a small square tile (thumbnail or camera placeholder).
+  if (compact) {
+    const side = 96;
+    return (
+      <Stack gap={6}>
+        {label && <Text size="sm" fw={500}>{label}</Text>}
+        {fileInput}
+        {url ? (
+          <Box pos="relative" w={side} h={side}>
+            <Image src={url} w={side} h={side} radius="md" fit="cover" alt="photo" onClick={pick} style={{ cursor: "pointer" }} />
+            <ActionIcon
+              variant="filled" color="red" size="sm" radius="xl" onClick={() => onChange(null)} aria-label="Remove"
+              style={{ position: "absolute", top: -6, right: -6 }}
+            >
+              <Trash size={12} />
+            </ActionIcon>
+          </Box>
+        ) : (
+          <Button
+            variant="light" w={side} h={side} p={0} onClick={pick} loading={busy}
+            styles={{ root: { borderStyle: "dashed", borderWidth: 2 }, label: { flexDirection: "column", gap: 2 } }}
+          >
+            <Camera size={22} weight="duotone" />
+            <Text size="9px">Photo</Text>
+          </Button>
+        )}
+      </Stack>
+    );
+  }
+
   return (
     <Stack gap={6}>
       {label && <Text size="sm" fw={500}>{label}</Text>}
-      <input
-        ref={inputRef} type="file" accept="image/*" capture="environment"
-        onChange={onFile} style={{ display: "none" }}
-      />
+      {fileInput}
       {url ? (
         <Box pos="relative">
           <Image src={url} h={height} radius="md" fit="cover" alt="photo" />

@@ -2,24 +2,34 @@
 
 import { useEffect, useState } from "react";
 import {
-  Avatar, Badge, Button, Divider, Group, SegmentedControl, SimpleGrid, Stack,
-  Text, Textarea, TextInput,
+  Avatar, Badge, Box, Button, Collapse, Divider, Group, SegmentedControl, SimpleGrid,
+  Stack, Switch, Text, Textarea, TextInput,
 } from "@mantine/core";
-import { PencilSimple, FloppyDisk, CheckCircle, DeviceMobile, NotePencil } from "@phosphor-icons/react";
+import {
+  PencilSimple, FloppyDisk, CheckCircle, DeviceMobile, NotePencil, ArrowRight, Plant,
+} from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
-import type { Farmer } from "@/lib/types";
+import type { Farmer, SeedPackage } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
+import SeedsInput from "./SeedsInput";
 import { blurOnEnter } from "@/lib/ui";
 
 const RELATIONS = ["S/o", "W/o", "D/o", "C/o"];
 
-export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: () => void }) {
+export default function BioStep({
+  farmer, onSaved, onContinue,
+}: {
+  farmer: Farmer;
+  onSaved: () => void;
+  onContinue: () => void;
+}) {
   const [editing, setEditing] = useState(!farmer.bioComplete);
   const [first, setFirst] = useState(farmer.firstName);
   const [last, setLast] = useState(farmer.lastName);
+  const [coOn, setCoOn] = useState(!!(farmer.coFirstName || farmer.coLastName));
   const [coFirst, setCoFirst] = useState(farmer.coFirstName);
   const [coLast, setCoLast] = useState(farmer.coLastName);
   const [relation, setRelation] = useState(farmer.coRelation || "S/o");
@@ -28,6 +38,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
     farmer.hasSmartphone == null ? "" : farmer.hasSmartphone ? "yes" : "no"
   );
   const [note, setNote] = useState(farmer.note || "");
+  const [seeds, setSeeds] = useState<SeedPackage[]>(farmer.seeds || []);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoDirty, setPhotoDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,9 +73,11 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
       }
       await db.farmers.update(farmer.id, {
         firstName: first.trim(), lastName: last.trim(),
-        coFirstName: coFirst.trim(), coLastName: coLast.trim(), coRelation: relation,
+        coFirstName: coOn ? coFirst.trim() : "", coLastName: coOn ? coLast.trim() : "",
+        coRelation: coOn ? relation : "",
         phone: phone.trim(), hasSmartphone: smartphone === "" ? null : smartphone === "yes",
         note: note.trim(),
+        seeds: seeds.map((s) => ({ seed: s.seed, qty: s.qty })),
         photoId, bioComplete: true, updatedAt: Date.now(), synced: false,
       });
       setPhotoDirty(false);
@@ -76,6 +89,7 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
     }
   };
 
+  // ---- Read-only view ----
   if (!editing) {
     const co = [coFirst, coLast].filter(Boolean).join(" ");
     const photoUrl = existingPhoto?.blob ? URL.createObjectURL(existingPhoto.blob) : null;
@@ -104,48 +118,77 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
           <Field label="Phone" value={phone || "—"} />
           <Field label="Smartphone" value={smartphone === "yes" ? "Yes" : smartphone === "no" ? "No" : "—"} />
         </SimpleGrid>
+        {seeds.length > 0 && (
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={4}>Seed packages</Text>
+            <Group gap={6}>
+              {seeds.map((s) => (
+                <Badge key={s.seed} variant="light" color="green" leftSection={<Plant size={12} />}>
+                  {s.seed} ×{s.qty}
+                </Badge>
+              ))}
+            </Group>
+          </div>
+        )}
         {note.trim() && <Field label="Note" value={note} />}
+
+        <Button fullWidth size="md" color="green" rightSection={<ArrowRight size={18} weight="bold" />} onClick={onContinue}>
+          Continue to Farms &amp; Plots
+        </Button>
       </Stack>
     );
   }
 
+  // ---- Editing view ----
   return (
     <Stack gap="md">
-      <PhotoInput
-        label="Farmer photo"
-        value={photo}
-        onChange={(b) => { setPhoto(b); setPhotoDirty(true); }}
-      />
-      <SimpleGrid cols={2} spacing="sm">
-        <TextInput label="First name" value={first} onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
-        <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
-      </SimpleGrid>
-
-      <Divider label="Care of (guardian / spouse)" labelPosition="left" />
-      <Group grow align="flex-end">
-        <SegmentedControl
-          data={RELATIONS.map((r) => ({ label: r, value: r }))} value={relation} onChange={setRelation}
+      <Group align="flex-start" wrap="nowrap" gap="sm">
+        <PhotoInput
+          compact label="Photo"
+          value={photo}
+          onChange={(b) => { setPhoto(b); setPhotoDirty(true); }}
         />
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <TextInput label="First name" value={first} onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required mb={6} />
+          <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
+        </Box>
       </Group>
+
+      <Switch
+        checked={coOn} onChange={(e) => setCoOn(e.currentTarget.checked)}
+        label="Add care-of (C/o)" color="green"
+      />
+      <Collapse in={coOn}>
+        <Stack gap="sm">
+          <SegmentedControl
+            fullWidth data={RELATIONS.map((r) => ({ label: r, value: r }))} value={relation} onChange={setRelation}
+          />
+          <SimpleGrid cols={2} spacing="sm">
+            <TextInput label="C/o first name" value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" />
+            <TextInput label="C/o last name" value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" />
+          </SimpleGrid>
+        </Stack>
+      </Collapse>
+
+      <Divider />
       <SimpleGrid cols={2} spacing="sm">
-        <TextInput label="C/o first name" value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" />
-        <TextInput label="C/o last name" value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" />
+        <TextInput
+          label="Phone number" type="tel" inputMode="numeric" value={phone}
+          onChange={(e) => setPhone(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" placeholder="10-digit mobile"
+        />
+        <div>
+          <Text size="sm" fw={500} mb={6}>
+            <Group gap={6} component="span"><DeviceMobile size={16} /> Smartphone?</Group>
+          </Text>
+          <SegmentedControl
+            fullWidth value={smartphone} onChange={setSmartphone}
+            data={[{ label: "Yes", value: "yes" }, { label: "No", value: "no" }]}
+          />
+        </div>
       </SimpleGrid>
 
       <Divider />
-      <TextInput
-        label="Phone number" type="tel" inputMode="numeric" value={phone}
-        onChange={(e) => setPhone(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" placeholder="10-digit mobile"
-      />
-      <div>
-        <Text size="sm" fw={500} mb={6}>
-          <Group gap={6} component="span"><DeviceMobile size={16} /> Has a smartphone?</Group>
-        </Text>
-        <SegmentedControl
-          fullWidth value={smartphone} onChange={setSmartphone}
-          data={[{ label: "Yes", value: "yes" }, { label: "No", value: "no" }]}
-        />
-      </div>
+      <SeedsInput value={seeds} onChange={setSeeds} />
 
       <Textarea
         label={<Group gap={6} component="span"><NotePencil size={16} /> Note (optional)</Group>}
@@ -154,9 +197,16 @@ export default function BioStep({ farmer, onSaved }: { farmer: Farmer; onSaved: 
         autosize minRows={2} maxRows={5}
       />
 
-      <Button size="md" leftSection={<FloppyDisk size={18} />} onClick={save} loading={saving} disabled={!canSave}>
-        Save bio data
-      </Button>
+      <Group grow>
+        <Button size="md" leftSection={<FloppyDisk size={18} />} onClick={save} loading={saving} disabled={!canSave}>
+          Save bio data
+        </Button>
+        {farmer.bioComplete && (
+          <Button size="md" variant="light" color="green" rightSection={<ArrowRight size={18} weight="bold" />} onClick={onContinue}>
+            Continue
+          </Button>
+        )}
+      </Group>
     </Stack>
   );
 }

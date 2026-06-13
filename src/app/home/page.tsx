@@ -9,6 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
+  QrCode,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -18,6 +19,8 @@ import { VILLAGES, villageByCode } from "@/lib/villages";
 import { computeStatus } from "@/lib/status";
 import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
+import QrScanner from "@/components/QrScanner";
+import { parseQr, looksLikeFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
 
@@ -35,6 +38,8 @@ function HomeInner() {
   };
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const farmers = useLiveQuery(
@@ -86,6 +91,25 @@ function HomeInner() {
     const r = await syncNow();
     if (r) notifications.show({ color: "green", message: `Synced ✓  ↑ ${r.pushed} · ↓ ${r.pulled}` });
     else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: "You're offline" });
+  };
+
+  // Scanned QR → if the farmer exists, open them; otherwise open the new-farmer
+  // dialog prefilled with the scanned code (fully offline — local lookup only).
+  const onScan = async (raw: string) => {
+    const { code } = parseQr(raw);
+    if (!looksLikeFarmerCode(code)) {
+      notifications.show({ color: "red", message: `Not a farmer QR: ${code || "empty"}` });
+      setScanOpen(false);
+      return;
+    }
+    setScanOpen(false);
+    const existing = await db.farmers.get(code);
+    if (existing) {
+      router.push(`/farmer?id=${code}`);
+    } else {
+      setScannedCode(code);
+      setAddOpen(true);
+    }
   };
 
   return (
@@ -200,14 +224,24 @@ function HomeInner() {
       </Container>
 
       <Affix position={{ bottom: "calc(20px + env(safe-area-inset-bottom))", right: 20 }}>
-        <Button radius="xl" size="md" leftSection={<Plus size={20} weight="bold" />} onClick={() => setAddOpen(true)}
-          styles={{ root: { boxShadow: "0 8px 24px rgba(6,133,79,0.4)" } }}>
-          Add farmer
-        </Button>
+        <Group gap="sm">
+          <Button radius="xl" size="md" variant="white" color="dark" onClick={() => setScanOpen(true)}
+            leftSection={<QrCode size={20} weight="bold" />}
+            styles={{ root: { boxShadow: "0 8px 24px rgba(0,0,0,0.25)" } }}>
+            Scan
+          </Button>
+          <Button radius="xl" size="md" leftSection={<Plus size={20} weight="bold" />} onClick={() => { setScannedCode(null); setAddOpen(true); }}
+            styles={{ root: { boxShadow: "0 8px 24px rgba(6,133,79,0.4)" } }}>
+            Add farmer
+          </Button>
+        </Group>
       </Affix>
 
+      <QrScanner opened={scanOpen} onClose={() => setScanOpen(false)} onScan={onScan} />
+
       <AddFarmerModal
-        opened={addOpen} onClose={() => setAddOpen(false)} defaultVillage={village}
+        opened={addOpen} onClose={() => { setAddOpen(false); setScannedCode(null); }} defaultVillage={village}
+        scannedCode={scannedCode}
         onCreated={(id) => router.push(`/farmer?id=${id}`)}
       />
     </Box>
