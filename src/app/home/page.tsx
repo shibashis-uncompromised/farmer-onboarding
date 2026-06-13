@@ -3,13 +3,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Menu, Paper,
+  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Menu, Modal, Paper,
   ScrollArea, Select, Stack, Text, TextInput, Title, UnstyledButton,
 } from "@mantine/core";
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode,
+  QrCode, Trash,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -41,6 +41,9 @@ function HomeInner() {
   const [scanOpen, setScanOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearPw, setClearPw] = useState("");
+  const [clearing, setClearing] = useState(false);
 
   const farmers = useLiveQuery(
     () => db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt"),
@@ -91,6 +94,29 @@ function HomeInner() {
     const r = await syncNow();
     if (r) notifications.show({ color: "green", message: `Synced ✓  ↑ ${r.pushed} · ↓ ${r.pulled}` });
     else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: "You're offline" });
+  };
+
+  // Wipe ALL local data on this device (farmers/farms/plots/photos). The server
+  // copy is untouched — this only clears IndexedDB on this phone/laptop.
+  const CLEAR_PW = "admin123";
+  const doClear = async () => {
+    if (clearPw !== CLEAR_PW) {
+      notifications.show({ color: "red", message: "Incorrect password" });
+      return;
+    }
+    setClearing(true);
+    try {
+      await db.transaction("rw", db.farmers, db.farms, db.plots, db.media, async () => {
+        await Promise.all([db.farmers.clear(), db.farms.clear(), db.plots.clear(), db.media.clear()]);
+      });
+      notifications.show({ color: "green", message: "Local data cleared on this device" });
+      setClearOpen(false);
+      setClearPw("");
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not clear data" });
+    } finally {
+      setClearing(false);
+    }
   };
 
   // Scanned QR → if the farmer exists, open them; otherwise open the new-farmer
@@ -156,6 +182,9 @@ function HomeInner() {
                   {exporting ? "Exporting…" : "Export all (ZIP)"}
                 </Menu.Item>
                 <Menu.Divider />
+                <Menu.Item color="red" leftSection={<Trash size={16} />} onClick={() => { setClearPw(""); setClearOpen(true); }}>
+                  Clear local data
+                </Menu.Item>
                 <Menu.Item color="red" leftSection={<SignOut size={16} />} onClick={() => { logout(); router.replace("/login"); }}>
                   Sign out
                 </Menu.Item>
@@ -244,6 +273,26 @@ function HomeInner() {
         scannedCode={scannedCode}
         onCreated={(id) => router.push(`/farmer?id=${id}`)}
       />
+
+      <Modal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data" centered radius="lg">
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            This erases all farmers, farms, plots and photos stored <b>on this device</b>.
+            The server copy is not affected. Anything not yet synced will be lost.
+          </Text>
+          <TextInput
+            label="Admin password" type="password" value={clearPw} placeholder="Enter admin password"
+            onChange={(e) => setClearPw(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doClear(); }} data-autofocus
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setClearOpen(false)}>Cancel</Button>
+            <Button color="red" leftSection={<Trash size={16} />} onClick={doClear} loading={clearing} disabled={!clearPw}>
+              Clear everything
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }
