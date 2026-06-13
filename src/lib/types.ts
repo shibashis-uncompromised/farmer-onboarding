@@ -54,6 +54,7 @@ export interface Media {
   blob: Blob;
   createdAt: number;
   synced?: boolean;
+  s3Key?: string;        // set after successful S3 upload
 }
 
 export interface SessionLocation {

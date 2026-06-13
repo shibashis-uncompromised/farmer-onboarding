@@ -1,6 +1,6 @@
 import type { Table } from "dexie";
 import { db } from "./db";
-import { apiSync, apiPull } from "./api";
+import { apiSync, apiPull, apiPresignMedia } from "./api";
 import { getSession } from "./session";
 
 // Merge server records into a local table, last-write-wins by updatedAt.
@@ -28,13 +28,35 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   if (!s) throw new Error("Not signed in");
   if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("You're offline — connect to sync");
 
-  // 1) push local changes
+  // 1) upload unsynced media blobs directly to S3 via presigned URLs
+  const allMedia = await db.media.toArray();
+  const unsyncedMedia = allMedia.filter((m) => !m.synced);
+  const syncedMediaPayload: { id: string; createdAt: number; type: string; s3Key: string }[] = [];
+
+  for (const m of unsyncedMedia) {
+    try {
+      const mimeType = m.blob.type || "image/jpeg";
+      const { uploadUrl, s3Key } = await apiPresignMedia(s.token, m.id, mimeType);
+      await fetch(uploadUrl, {
+        method: "PUT",
+        body: m.blob,
+        headers: { "Content-Type": mimeType },
+      });
+      await db.media.update(m.id, { s3Key, synced: true } as any);
+      syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: mimeType, s3Key });
+    } catch (e) {
+      console.warn(`Media upload failed for ${m.id}:`, e);
+      // Don't block the rest of sync — media will retry next time
+    }
+  }
+
+  // 2) push local farmer/farm/plot changes (include successfully uploaded media)
   const [lf, lfm, lp] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
   const uf = lf.filter((x) => !x.synced);
   const um = lfm.filter((x) => !x.synced);
   const up = lp.filter((x) => !x.synced);
-  if (uf.length || um.length || up.length) {
-    await apiSync(s.token, { farmers: uf, farms: um, plots: up });
+  if (uf.length || um.length || up.length || syncedMediaPayload.length) {
+    await apiSync(s.token, { farmers: uf, farms: um, plots: up, media: syncedMediaPayload });
     await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
       for (const x of uf) await db.farmers.update(x.id, { synced: true } as any);
       for (const x of um) await db.farms.update(x.id, { synced: true } as any);
@@ -42,7 +64,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     });
   }
 
-  // 2) pull the full server set + merge (network call OUTSIDE the tx)
+  // 3) pull the full server set + merge (network call OUTSIDE the tx)
   const server = await apiPull(s.token);
   let pulled = 0;
   await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
@@ -51,5 +73,5 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     pulled += await mergeTable(db.plots as any, server.plots as any);
   });
 
-  return { pushed: uf.length + um.length + up.length, pulled };
+  return { pushed: uf.length + um.length + up.length + syncedMediaPayload.length, pulled };
 }

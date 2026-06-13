@@ -33,3 +33,10 @@ export const apiSync = (token: string, payload: object) =>
 
 export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[]; media?: any[] }> =>
   req("/api/pull", { method: "POST", body: JSON.stringify({ token }) });
+
+export const apiPresignMedia = (
+  token: string,
+  mediaId: string,
+  mimeType: string
+): Promise<{ uploadUrl: string; s3Key: string }> =>
+  req("/api/media/presign", { method: "POST", body: JSON.stringify({ token, mediaId, mimeType }) });
