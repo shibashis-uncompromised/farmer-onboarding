@@ -13,13 +13,15 @@ export interface Village {
 
 export const REGION_PREFIX = "RJ";
 
+// Order here drives the village dropdown order. Udai & Belua 1/2 are kept on
+// top for the active onboarding push; codes stay fixed so existing IDs match.
 export const VILLAGES: Village[] = [
-  { code: "001", name: "Velua", block: "Jhadol", idCode: "VELA" },
-  { code: "002", name: "Aamod", block: "Jhadol", idCode: "AMOD" },
-  { code: "003", name: "Fatehpur", block: "Khamnor", idCode: "FTHP" },
   { code: "004", name: "Udai", block: "Sarada", idCode: "UDAI" },
   { code: "005", name: "Belua 1", block: "Sarada", idCode: "BELU" },
   { code: "006", name: "Belua 2", block: "Sarada", idCode: "BELU" },
+  { code: "001", name: "Velua", block: "Jhadol", idCode: "VELA" },
+  { code: "002", name: "Aamod", block: "Jhadol", idCode: "AMOD" },
+  { code: "003", name: "Fatehpur", block: "Khamnor", idCode: "FTHP" },
 ];
 
 export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === code);
