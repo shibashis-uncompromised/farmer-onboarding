@@ -73,5 +73,21 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     pulled += await mergeTable(db.plots as any, server.plots as any);
   });
 
+  // 4) download any media blobs we don't have locally yet
+  for (const m of server.media || []) {
+    if (!m?.id || !m?.s3Url) continue;
+    const existing = await db.media.get(m.id);
+    if (existing?.blob) continue;  // already have the blob
+    try {
+      const res = await fetch(m.s3Url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      await db.media.put({ id: m.id, blob, createdAt: m.createdAt, synced: true, s3Key: m.s3Key });
+      pulled++;
+    } catch (e) {
+      console.warn(`Media download failed for ${m.id}:`, e);
+    }
+  }
+
   return { pushed: uf.length + um.length + up.length + syncedMediaPayload.length, pulled };
 }
