@@ -3,7 +3,7 @@ import { API_BASE } from "./config";
 // fetch() never times out on its own — a stalled connection would hang sync
 // forever (infinite "syncing" spinner). Abort after `timeoutMs` so the caller
 // rejects, the sync guard resets, and the next tick retries cleanly.
-export async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+export async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 12000): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -13,7 +13,7 @@ export async function fetchWithTimeout(url: string, opts: RequestInit = {}, time
   }
 }
 
-async function req(path: string, opts: RequestInit = {}, timeoutMs = 20000) {
+async function req(path: string, opts: RequestInit = {}, timeoutMs = 8000) {
   let res: Response;
   try {
     res = await fetchWithTimeout(API_BASE + path, {

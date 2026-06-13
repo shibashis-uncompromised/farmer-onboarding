@@ -41,7 +41,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
         method: "PUT",
         body: m.blob,
         headers: { "Content-Type": mimeType },
-      }, 45000);
+      }, 15000);
       if (!put.ok) throw new Error(`S3 upload failed (${put.status})`);
       await db.media.update(m.id, { s3Key, synced: true } as any);
       syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: mimeType, s3Key });
@@ -52,17 +52,25 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   }
 
   // 2) push local farmer/farm/plot changes (include successfully uploaded media)
+  // Best-effort: a push failure must NOT stop the pull below, so viewing
+  // server data never depends on the upload/push succeeding.
   const [lf, lfm, lp] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
   const uf = lf.filter((x) => !x.synced);
   const um = lfm.filter((x) => !x.synced);
   const up = lp.filter((x) => !x.synced);
-  if (uf.length || um.length || up.length || syncedMediaPayload.length) {
-    await apiSync(s.token, { farmers: uf, farms: um, plots: up, media: syncedMediaPayload });
-    await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
-      for (const x of uf) await db.farmers.update(x.id, { synced: true } as any);
-      for (const x of um) await db.farms.update(x.id, { synced: true } as any);
-      for (const x of up) await db.plots.update(x.id, { synced: true } as any);
-    });
+  let pushed = 0;
+  try {
+    if (uf.length || um.length || up.length || syncedMediaPayload.length) {
+      await apiSync(s.token, { farmers: uf, farms: um, plots: up, media: syncedMediaPayload });
+      await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
+        for (const x of uf) await db.farmers.update(x.id, { synced: true } as any);
+        for (const x of um) await db.farms.update(x.id, { synced: true } as any);
+        for (const x of up) await db.plots.update(x.id, { synced: true } as any);
+      });
+      pushed = uf.length + um.length + up.length;
+    }
+  } catch (e) {
+    console.warn("Push failed — will retry next sync; continuing to pull:", e);
   }
 
   // 3) pull the full server set + merge (network call OUTSIDE the tx)
@@ -80,7 +88,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     const existing = await db.media.get(m.id);
     if (existing?.blob) continue;  // already have the blob
     try {
-      const res = await fetchWithTimeout(m.s3Url, {}, 45000);
+      const res = await fetchWithTimeout(m.s3Url, {}, 15000);
       if (!res.ok) continue;
       const blob = await res.blob();
       await db.media.put({ id: m.id, blob, createdAt: m.createdAt, synced: true, s3Key: m.s3Key });
@@ -90,5 +98,5 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     }
   }
 
-  return { pushed: uf.length + um.length + up.length + syncedMediaPayload.length, pulled };
+  return { pushed: pushed + syncedMediaPayload.length, pulled };
 }
