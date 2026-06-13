@@ -1,6 +1,6 @@
 import type { Table } from "dexie";
 import { db } from "./db";
-import { apiSync, apiPull, apiPresignMedia } from "./api";
+import { apiSync, apiPull, apiPresignMedia, fetchWithTimeout } from "./api";
 import { getSession } from "./session";
 
 // Merge server records into a local table, last-write-wins by updatedAt.
@@ -37,11 +37,12 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     try {
       const mimeType = m.blob.type || "image/jpeg";
       const { uploadUrl, s3Key } = await apiPresignMedia(s.token, m.id, mimeType);
-      await fetch(uploadUrl, {
+      const put = await fetchWithTimeout(uploadUrl, {
         method: "PUT",
         body: m.blob,
         headers: { "Content-Type": mimeType },
-      });
+      }, 45000);
+      if (!put.ok) throw new Error(`S3 upload failed (${put.status})`);
       await db.media.update(m.id, { s3Key, synced: true } as any);
       syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: mimeType, s3Key });
     } catch (e) {
@@ -79,7 +80,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     const existing = await db.media.get(m.id);
     if (existing?.blob) continue;  // already have the blob
     try {
-      const res = await fetch(m.s3Url);
+      const res = await fetchWithTimeout(m.s3Url, {}, 45000);
       if (!res.ok) continue;
       const blob = await res.blob();
       await db.media.put({ id: m.id, blob, createdAt: m.createdAt, synced: true, s3Key: m.s3Key });
