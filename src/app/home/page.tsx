@@ -228,32 +228,18 @@ function HomeInner() {
         />
 
         {farmers === undefined ? (
-          // Local DB still reading
+          // Local DB read only (milliseconds) — NOT tied to sync/network at all.
           <Center mih={260}><Loader color="green" /></Center>
         ) : filtered.length === 0 ? (
+          // Always instant from local data. Sync status lives in the header icon,
+          // never here — an empty village just says so, regardless of network.
           <Center mih={260}>
             <Stack align="center" gap={6}>
-              {!search && syncState === "syncing" ? (
-                // Empty + actively syncing → we're probably still pulling, not truly empty
-                <>
-                  <Loader color="green" size="sm" />
-                  <Text c="dimmed" ta="center">Loading farmers…</Text>
-                </>
-              ) : !search && syncState === "error" ? (
-                <>
-                  <WarningCircle size={48} weight="duotone" color="var(--mantine-color-gray-4)" />
-                  <Text c="dimmed" ta="center">Couldn’t reach the server — retrying…</Text>
-                  <Button size="xs" variant="light" onClick={doSync}>Retry now</Button>
-                </>
-              ) : (
-                <>
-                  <UsersThree size={48} weight="duotone" color="var(--mantine-color-gray-4)" />
-                  <Text c="dimmed" ta="center">
-                    {search ? "No farmers match your search" : "No farmers yet in this village"}
-                  </Text>
-                  {!search && <Text c="dimmed" size="sm">Tap the + button to add one</Text>}
-                </>
-              )}
+              <UsersThree size={48} weight="duotone" color="var(--mantine-color-gray-4)" />
+              <Text c="dimmed" ta="center">
+                {search ? "No farmers match your search" : "No farmers yet in this village"}
+              </Text>
+              {!search && <Text c="dimmed" size="sm">Tap the + button to add one</Text>}
             </Stack>
           </Center>
         ) : (

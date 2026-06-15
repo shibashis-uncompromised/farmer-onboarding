@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v17";
+const CACHE = "farmer-onboarding-v18";
 
 // Build-time list of all JS/CSS/font chunks (written by scripts/gen-sw-manifest.mjs).
 try { importScripts("/sw-manifest.js"); } catch (e) {}
@@ -35,32 +35,35 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  // Navigations: network-first, cached per PATH (ignoring ?query) so a route
-  // like /farmer/?id=123 reuses the cached /farmer/ shell offline. Offline
-  // falls back to that same-path shell — NOT to home — so opening a farmer
-  // offline shows the farmer page, which reads ?id from the URL client-side.
+  // Navigations: CACHE-FIRST (stale-while-revalidate), cached per PATH (ignoring
+  // ?query) so /farmer/?id=123 reuses the cached /farmer/ shell. Serving from
+  // cache first means the app opens INSTANTLY regardless of network speed — a
+  // slow/flaky connection can no longer hang the page load. We still fetch in
+  // the background to refresh the cached shell for next time; the service-worker
+  // version bump + auto-reload is what actually ships new app versions.
   if (req.mode === "navigate") {
     const shellKey = url.origin + url.pathname;          // strip query
     e.respondWith((async () => {
-      try {
-        const res = await fetch(req);
-        const clean = res.redirected
-          ? new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers })
-          : res;
-        if (res.ok) {
-          const copy = clean.clone();
-          caches.open(CACHE).then((c) => c.put(shellKey, copy)).catch(() => {});
-        }
-        return clean;
-      } catch {
-        return (
-          (await caches.match(shellKey)) ||
-          (await caches.match(url.pathname)) ||
-          (await caches.match("/home/")) ||
-          (await caches.match("/")) ||
-          Response.error()
-        );
-      }
+      const cached =
+        (await caches.match(shellKey)) ||
+        (await caches.match(url.pathname)) ||
+        (await caches.match("/home/")) ||
+        (await caches.match("/"));
+
+      // Background refresh (don't block the response on the network).
+      const fromNetwork = fetch(req)
+        .then((res) => {
+          if (res.ok && !res.redirected) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(shellKey, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => null);
+
+      // Serve cache immediately if we have it; otherwise wait for the network
+      // (first-ever visit, nothing cached yet).
+      return cached || (await fromNetwork) || Response.error();
     })());
     return;
   }
