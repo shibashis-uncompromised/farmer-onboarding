@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Group, Modal, Select, Stack, TextInput } from "@mantine/core";
+import { Button, Group, Select, Stack, TextInput } from "@mantine/core";
+import AppModal from "./AppModal";
 import { UserPlus } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
@@ -75,7 +76,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title={scannedCode ? "New farmer (scanned)" : "Add farmer"} centered radius="lg">
+    <AppModal opened={opened} onClose={onClose} title={scannedCode ? "New farmer (scanned)" : "Add farmer"}>
       <Stack gap="md">
         {scannedCode && (
           <TextInput label="Scanned code" value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
@@ -87,7 +88,9 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
         <TextInput label="First name" placeholder="e.g. Motilal" value={first}
           onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required data-autofocus />
         <TextInput label="Last name" placeholder="e.g. Prathaji" value={last}
-          onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" required />
+          onChange={(e) => setLast(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (canSave) save(); } }}
+          enterKeyHint="done" required />
         <Group justify="flex-end" mt="xs">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button onClick={save} loading={saving} disabled={!canSave} leftSection={<UserPlus size={18} />}>
@@ -95,6 +98,6 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
           </Button>
         </Group>
       </Stack>
-    </Modal>
+    </AppModal>
   );
 }

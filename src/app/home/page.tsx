@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Loader, Menu, Modal, Paper,
+  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Loader, Menu, Paper,
   ScrollArea, Select, Stack, Text, TextInput, Title, UnstyledButton,
 } from "@mantine/core";
 import {
@@ -19,6 +19,7 @@ import { villageByCode, villagesForUser } from "@/lib/villages";
 import { computeStatus } from "@/lib/status";
 import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
+import AppModal from "@/components/AppModal";
 import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
@@ -303,7 +304,7 @@ function HomeInner() {
         onCreated={(id) => router.push(`/farmer?id=${id}`)}
       />
 
-      <Modal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data" centered radius="lg">
+      <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
             This erases all farmers, farms, plots and photos stored <b>on this device</b>.
@@ -321,7 +322,7 @@ function HomeInner() {
             </Button>
           </Group>
         </Stack>
-      </Modal>
+      </AppModal>
     </Box>
   );
 }

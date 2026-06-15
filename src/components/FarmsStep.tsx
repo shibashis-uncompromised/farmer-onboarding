@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  ActionIcon, Badge, Box, Button, Card, Group, Image, Modal, Paper, Select, Stack, Text,
+  ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
   ThemeIcon,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -17,6 +17,7 @@ import { getCurrentLocation, fmtCoord } from "@/lib/location";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import PhotoInput from "./PhotoInput";
+import AppModal from "./AppModal";
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -224,14 +225,14 @@ function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: (
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Add farm" centered radius="lg">
+    <AppModal opened={opened} onClose={onClose} title="Add farm">
       <Stack gap="md">
         <PhotoInput label="Farm photo" value={photo} onChange={setPhoto} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
         <BoundaryCapture points={boundary} onChange={setBoundary} />
         <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>Save farm</Button>
       </Stack>
-    </Modal>
+    </AppModal>
   );
 }
 
@@ -260,7 +261,7 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`} centered radius="lg">
+    <AppModal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`}>
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
         <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
@@ -268,6 +269,6 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
           checkIconPosition="right" searchable data-autofocus />
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
       </Stack>
-    </Modal>
+    </AppModal>
   );
 }
