@@ -49,12 +49,16 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "farms.csv",
     toCSV(
-      ["Farm ID","Farmer ID","Village","Latitude","Longitude","Accuracy (m)","Photo File","Created"],
+      ["Farm ID","Farmer ID","Village","Latitude","Longitude","Accuracy (m)","Boundary Points","Boundary Coords","Photo File","Created"],
       farms.map((fm) => {
         const v = villageByCode(fm.villageCode);
+        const bnd = fm.boundary || [];
         return [
           fm.id, fm.farmerId, v?.name || fm.villageCode, fm.lat ?? "", fm.lng ?? "",
-          fm.accuracy ?? "", fm.photoId ? `photos/${fm.id}.jpg` : "", fmtTs(fm.createdAt),
+          fm.accuracy ?? "",
+          bnd.length || "",
+          bnd.map((p) => `${p.lat.toFixed(6)} ${p.lng.toFixed(6)}`).join(" | "),
+          fm.photoId ? `photos/${fm.id}.jpg` : "", fmtTs(fm.createdAt),
         ];
       })
     )

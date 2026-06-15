@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Loader, Menu, Modal, Paper,
@@ -15,7 +15,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import SessionGate, { useSession } from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { VILLAGES, villageByCode } from "@/lib/villages";
+import { villageByCode, villagesForUser } from "@/lib/villages";
 import { computeStatus } from "@/lib/status";
 import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
@@ -26,16 +26,26 @@ import { logout } from "@/lib/auth";
 
 function HomeInner() {
   const router = useRouter();
-  const { location, syncState, syncNow } = useSession();
+  const { user, location, syncState, syncNow } = useSession();
+  // Villages this user may see (RJ users see RJ villages, mpfield sees MP).
+  const villages = useMemo(() => villagesForUser(user.username), [user.username]);
   // Persist the selected village so it survives navigation/reload (and offline).
   const [village, setVillageState] = useState<string>(() => {
-    try { return localStorage.getItem("fo_selected_village") || VILLAGES[0].code; }
-    catch { return VILLAGES[0].code; }
+    try { return localStorage.getItem("fo_selected_village") || ""; }
+    catch { return ""; }
   });
   const setVillage = (v: string) => {
     setVillageState(v);
     try { localStorage.setItem("fo_selected_village", v); } catch {}
   };
+  // Keep the selection valid for this user (e.g. a stale RJ village for an MP
+  // user, or first load with nothing saved) — fall back to their first village.
+  useEffect(() => {
+    if (!villages.some((v) => v.code === village)) {
+      setVillage(villages[0]?.code || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [villages, village]);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -194,8 +204,8 @@ function HomeInner() {
           </Group>
 
           <Select
-            data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
-            value={village} onChange={(v) => v && setVillage(v)} allowDeselect={false}
+            data={villages.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
+            value={village || null} onChange={(v) => v && setVillage(v)} allowDeselect={false}
             checkIconPosition="right" size="md" radius="md"
             leftSection={<MapPin size={18} />}
             styles={{ input: { fontWeight: 600 } }}

@@ -37,9 +37,18 @@ export interface Farm {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
+  boundary?: BoundaryPoint[];   // optional polygon: GPS points captured at corners
   createdAt: number;
   updatedAt: number;
   synced: boolean;
+}
+
+// A single corner/deviation point of a farm boundary.
+export interface BoundaryPoint {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  at: number;
 }
 
 export interface Plot {

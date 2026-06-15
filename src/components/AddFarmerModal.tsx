@@ -7,7 +7,8 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmerId } from "@/lib/ids";
 import { villageCodeFromId } from "@/lib/qr";
-import { VILLAGES } from "@/lib/villages";
+import { villagesForUser } from "@/lib/villages";
+import { getSession } from "@/lib/session";
 import { blurOnEnter } from "@/lib/ui";
 import type { Farmer } from "@/lib/types";
 
@@ -80,7 +81,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
           <TextInput label="Scanned code" value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
         )}
         <Select
-          label="Village" data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} (${v.block})` }))}
+          label="Village" data={villagesForUser(getSession()?.username).map((v) => ({ value: v.code, label: `${v.name} (${v.block})` }))}
           value={village} onChange={(v) => setVillage(v || "")} allowDeselect={false} checkIconPosition="right"
         />
         <TextInput label="First name" placeholder="e.g. Motilal" value={first}

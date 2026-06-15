@@ -2,19 +2,19 @@
 
 import { useState } from "react";
 import {
-  ActionIcon, Badge, Button, Card, Group, Image, Modal, Paper, Select, Stack, Text,
+  ActionIcon, Badge, Box, Button, Card, Group, Image, Modal, Paper, Select, Stack, Text,
   ThemeIcon,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
-  Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path,
+  Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getCurrentLocation, fmtCoord } from "@/lib/location";
-import type { Farmer, Farm, SessionLocation } from "@/lib/types";
+import type { Farmer, Farm, SessionLocation, BoundaryPoint } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import PhotoInput from "./PhotoInput";
 
@@ -62,6 +62,11 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <Group gap={6} mb="sm">
         <MapPinLine size={15} color="var(--mantine-color-green-7)" />
         <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
+        {farm.boundary && farm.boundary.length > 0 && (
+          <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
+            {farm.boundary.length}-pt boundary
+          </Badge>
+        )}
       </Group>
 
       <Stack gap={6}>
@@ -94,7 +99,9 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
   const capture = async () => {
     setBusy(true);
     try {
-      onCapture(await getCurrentLocation());
+      // maximumAge: 0 forces a fresh GPS reading each tap, so two plots captured
+      // in quick succession never reuse a stale (cached) position.
+      onCapture(await getCurrentLocation({ maximumAge: 0 }));
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not get location" });
     } finally {
@@ -123,12 +130,74 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
   );
 }
 
+// ---- Boundary capture: stand at each corner / deviation point and add it ----
+function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChange: (p: BoundaryPoint[]) => void }) {
+  const [busy, setBusy] = useState(false);
+  const addPoint = async () => {
+    setBusy(true);
+    try {
+      const l = await getCurrentLocation({ maximumAge: 0 });   // fresh fix per corner
+      onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at }]);
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not get location" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removePoint = (i: number) => onChange(points.filter((_, idx) => idx !== i));
+
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Group justify="space-between" mb={points.length ? "xs" : 0}>
+        <Group gap={8}>
+          <ThemeIcon variant="light" color={points.length ? "teal" : "gray"} radius="xl">
+            <Polygon size={18} weight={points.length ? "fill" : "regular"} />
+          </ThemeIcon>
+          <div>
+            <Text size="sm" fw={500}>Farm boundary <Text span size="xs" c="dimmed">(optional)</Text></Text>
+            <Text size="xs" c="dimmed">
+              {points.length ? `${points.length} point${points.length === 1 ? "" : "s"} captured` : "Stand at each corner and add a point"}
+            </Text>
+          </div>
+        </Group>
+        <Button size="xs" variant="filled" leftSection={<Plus size={14} />} loading={busy} onClick={addPoint}>
+          Add point
+        </Button>
+      </Group>
+      {points.length > 0 && (
+        // Cap the list so a long boundary never pushes "Save farm" off-screen —
+        // the points scroll internally instead.
+        <Box mah={170} style={{ overflowY: "auto" }}>
+          <Stack gap={6}>
+            {points.map((p, i) => (
+              <Paper key={p.at} withBorder radius="sm" p={6} bg="gray.0">
+                <Group justify="space-between" wrap="nowrap">
+                  <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                    <ThemeIcon variant="light" color="green" size="sm" radius="xl"><MapPin size={12} /></ThemeIcon>
+                    <Text size="xs" truncate>
+                      #{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)
+                    </Text>
+                  </Group>
+                  <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label="Remove point">
+                    <Trash size={14} />
+                  </ActionIcon>
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
 function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: () => void; farmer: Farmer }) {
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [loc, setLoc] = useState<SessionLocation | null>(null);
+  const [boundary, setBoundary] = useState<BoundaryPoint[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const reset = () => { setPhoto(null); setLoc(null); };
+  const reset = () => { setPhoto(null); setLoc(null); setBoundary([]); };
 
   const save = async () => {
     setSaving(true);
@@ -140,6 +209,7 @@ function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: (
       await db.farms.add({
         id, farmerId: farmer.id, villageCode: farmer.villageCode, photoId,
         lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+        boundary: boundary.length ? boundary : undefined,
         createdAt: now, updatedAt: now, synced: false,
       });
       await db.farmers.update(farmer.id, { updatedAt: now, synced: false });
@@ -158,6 +228,7 @@ function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: (
       <Stack gap="md">
         <PhotoInput label="Farm photo" value={photo} onChange={setPhoto} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
+        <BoundaryCapture points={boundary} onChange={setBoundary} />
         <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>Save farm</Button>
       </Stack>
     </Modal>
