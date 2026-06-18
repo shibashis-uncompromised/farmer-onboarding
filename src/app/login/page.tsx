@@ -7,7 +7,6 @@ import {
 } from "@mantine/core";
 import { SignIn } from "@phosphor-icons/react";
 import { login } from "@/lib/auth";
-import { syncAll } from "@/lib/sync";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +21,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      await syncAll().catch(() => {});   // pull existing data so this device starts in sync
+      // Go straight to home — do NOT wait on a sync here, or slow internet would
+      // block the login→home transition. SessionGate runs the first sync in the
+      // background once home mounts.
       router.replace("/home");
     } catch (err: any) {
       const offline = typeof navigator !== "undefined" && !navigator.onLine;

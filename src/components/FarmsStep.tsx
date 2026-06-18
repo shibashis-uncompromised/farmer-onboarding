@@ -16,6 +16,7 @@ import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getCurrentLocation, fmtCoord } from "@/lib/location";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
+import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 
@@ -51,7 +52,7 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
 function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [plotOpen, plotModal] = useDisclosure(false);
   const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
-  const url = photo?.blob ? URL.createObjectURL(photo.blob) : null;
+  const url = useBlobUrl(photo?.blob);
 
   return (
     <Card withBorder radius="md" p="sm">

@@ -12,6 +12,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
+import { useBlobUrl } from "@/lib/useBlobUrl";
 import type { Farmer, SeedPackage } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
 import SeedsInput from "./SeedsInput";
@@ -51,6 +52,9 @@ export default function BioStep({
   useEffect(() => {
     if (!photoDirty && existingPhoto?.blob) setPhoto(existingPhoto.blob);
   }, [existingPhoto, photoDirty]);
+
+  // Auto-revoked preview URL for the read-only view (no per-render leak).
+  const savedPhotoUrl = useBlobUrl(existingPhoto?.blob);
 
   const canSave = first.trim() && last.trim();
 
@@ -92,7 +96,7 @@ export default function BioStep({
   // ---- Read-only view ----
   if (!editing) {
     const co = [coFirst, coLast].filter(Boolean).join(" ");
-    const photoUrl = existingPhoto?.blob ? URL.createObjectURL(existingPhoto.blob) : null;
+    const photoUrl = savedPhotoUrl;
     return (
       <Stack gap="md">
         <Group justify="space-between">
