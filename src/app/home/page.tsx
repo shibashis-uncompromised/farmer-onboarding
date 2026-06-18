@@ -56,6 +56,19 @@ function HomeInner() {
   const [clearPw, setClearPw] = useState("");
   const [clearing, setClearing] = useState(false);
 
+  // Live app version — read from the active service-worker cache name
+  // (farmer-onboarding-vNN), so it always reflects what's actually running.
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    if (typeof caches === "undefined") return;
+    caches.keys()
+      .then((keys) => {
+        const k = keys.filter((x) => /^farmer-onboarding-v\d+$/.test(x)).sort().pop();
+        if (k) setAppVersion(k.replace("farmer-onboarding-", ""));
+      })
+      .catch(() => {});
+  }, []);
+
   const farmers = useLiveQuery(
     () => db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt"),
     [village]
@@ -169,6 +182,9 @@ function HomeInner() {
               </div>
             </Group>
             <Group gap={2}>
+              {appVersion && (
+                <Text size="xs" c="green.1" fw={600} mr={2} title="App version">{appVersion}</Text>
+              )}
               <ActionIcon
                 variant="subtle" color="gray.0" size="lg" onClick={doSync} aria-label="Sync"
                 title={syncState === "offline" ? "Offline" : syncState === "error" ? "Sync issue — tap to retry" : syncState === "syncing" ? "Syncing…" : "Synced"}
