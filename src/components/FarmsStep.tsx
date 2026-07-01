@@ -14,7 +14,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
-import { getCurrentLocation, fmtCoord } from "@/lib/location";
+import { getBestLocation, fmtCoord } from "@/lib/location";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
@@ -73,7 +73,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
     setSavingSample(true);
     try {
       let loc: SessionLocation | null = null;
-      try { loc = await getCurrentLocation({ maximumAge: 30000, timeout: 6000 }); } catch { /* location optional */ }
+      try { loc = await getBestLocation({ targetAccuracy: 15, maxWait: 8000 }); } catch { /* location optional */ }
       const now = Date.now();
       const sample: SoilSample = {
         id: uid(), code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
@@ -189,31 +189,42 @@ function SoilSamplesModal({ opened, onClose, farm, samples }: { opened: boolean;
 }
 
 // ---- Reusable location capture row ----
+// Waits for an accurate GPS lock (watchPosition), showing the fix tightening
+// live, instead of grabbing the first coarse (±100m) reading.
 function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCapture: (l: SessionLocation) => void }) {
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState<number | null>(null);   // live accuracy while locking
+
   const capture = async () => {
     setBusy(true);
+    setLive(null);
     try {
-      // maximumAge: 0 forces a fresh GPS reading each tap, so two plots captured
-      // in quick succession never reuse a stale (cached) position.
-      onCapture(await getCurrentLocation({ maximumAge: 0 }));
+      const best = await getBestLocation({
+        targetAccuracy: 10, maxWait: 20000,
+        onProgress: (l) => setLive(Math.round(l.accuracy)),
+      });
+      onCapture(best);
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not get location" });
     } finally {
       setBusy(false);
+      setLive(null);
     }
   };
+
   return (
     <Paper withBorder radius="md" p="sm">
       <Group justify="space-between">
         <Group gap={8}>
-          <ThemeIcon variant="light" color={loc ? "teal" : "gray"} radius="xl">
-            {loc ? <CheckCircle size={18} weight="fill" /> : <Crosshair size={18} />}
+          <ThemeIcon variant="light" color={busy ? "yellow" : loc ? "teal" : "gray"} radius="xl">
+            {loc && !busy ? <CheckCircle size={18} weight="fill" /> : <Crosshair size={18} />}
           </ThemeIcon>
           <div>
-            <Text size="sm" fw={500}>{loc ? "Location captured" : "Geolocation"}</Text>
+            <Text size="sm" fw={500}>{busy ? "Locating…" : loc ? "Location captured" : "Geolocation"}</Text>
             <Text size="xs" c="dimmed">
-              {loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : "Not captured yet"}
+              {busy
+                ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
+                : loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : "Not captured yet"}
             </Text>
           </div>
         </Group>
@@ -228,15 +239,22 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
 // ---- Boundary capture: stand at each corner / deviation point and add it ----
 function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChange: (p: BoundaryPoint[]) => void }) {
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState<number | null>(null);
   const addPoint = async () => {
     setBusy(true);
+    setLive(null);
     try {
-      const l = await getCurrentLocation({ maximumAge: 0 });   // fresh fix per corner
+      // Wait for an accurate lock at this corner (not the first coarse reading).
+      const l = await getBestLocation({
+        targetAccuracy: 10, maxWait: 20000,
+        onProgress: (p) => setLive(Math.round(p.accuracy)),
+      });
       onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at }]);
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not get location" });
     } finally {
       setBusy(false);
+      setLive(null);
     }
   };
   const removePoint = (i: number) => onChange(points.filter((_, idx) => idx !== i));
@@ -251,7 +269,9 @@ function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChan
           <div>
             <Text size="sm" fw={500}>Farm boundary <Text span size="xs" c="dimmed">(optional)</Text></Text>
             <Text size="xs" c="dimmed">
-              {points.length ? `${points.length} point${points.length === 1 ? "" : "s"} captured` : "Stand at each corner and add a point"}
+              {busy
+                ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
+                : points.length ? `${points.length} point${points.length === 1 ? "" : "s"} captured` : "Stand at each corner and add a point"}
             </Text>
           </div>
         </Group>
