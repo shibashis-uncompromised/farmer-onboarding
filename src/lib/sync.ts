@@ -54,20 +54,24 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 2) push local farmer/farm/plot changes (include successfully uploaded media)
   // Best-effort: a push failure must NOT stop the pull below, so viewing
   // server data never depends on the upload/push succeeding.
-  const [lf, lfm, lp] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
+  const [lf, lfm, lp, lss] = await Promise.all([
+    db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray(),
+  ]);
   const uf = lf.filter((x) => !x.synced);
   const um = lfm.filter((x) => !x.synced);
   const up = lp.filter((x) => !x.synced);
+  const uss = lss.filter((x) => !x.synced);
   let pushed = 0;
   try {
-    if (uf.length || um.length || up.length || syncedMediaPayload.length) {
-      await apiSync(s.token, { farmers: uf, farms: um, plots: up, media: syncedMediaPayload });
-      await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
+    if (uf.length || um.length || up.length || uss.length || syncedMediaPayload.length) {
+      await apiSync(s.token, { farmers: uf, farms: um, plots: up, soilSamples: uss, media: syncedMediaPayload });
+      await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
         for (const x of uf) await db.farmers.update(x.id, { synced: true } as any);
         for (const x of um) await db.farms.update(x.id, { synced: true } as any);
         for (const x of up) await db.plots.update(x.id, { synced: true } as any);
+        for (const x of uss) await db.soilSamples.update(x.id, { synced: true } as any);
       });
-      pushed = uf.length + um.length + up.length;
+      pushed = uf.length + um.length + up.length + uss.length;
     }
   } catch (e) {
     console.warn("Push failed — will retry next sync; continuing to pull:", e);
@@ -76,10 +80,11 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 3) pull the full server set + merge (network call OUTSIDE the tx)
   const server = await apiPull(s.token);
   let pulled = 0;
-  await db.transaction("rw", db.farmers, db.farms, db.plots, async () => {
+  await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
     pulled += await mergeTable(db.farmers as any, server.farmers as any);
     pulled += await mergeTable(db.farms as any, server.farms as any);
     pulled += await mergeTable(db.plots as any, server.plots as any);
+    pulled += await mergeTable(db.soilSamples as any, server.soilSamples as any);
   });
 
   // 4) download any media blobs we don't have locally yet

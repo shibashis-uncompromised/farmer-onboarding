@@ -49,7 +49,7 @@ export const apiAllocate = (token: string) =>
 export const apiSync = (token: string, payload: object) =>
   req("/api/sync", { method: "POST", body: JSON.stringify({ token, ...payload }) });
 
-export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[]; media?: any[] }> =>
+export const apiPull = (token: string): Promise<{ farmers: any[]; farms: any[]; plots: any[]; media?: any[]; soilSamples?: any[] }> =>
   req("/api/pull", { method: "POST", body: JSON.stringify({ token }) });
 
 export const apiPresignMedia = (

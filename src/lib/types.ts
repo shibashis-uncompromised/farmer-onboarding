@@ -73,6 +73,22 @@ export interface Media {
   s3Key?: string;        // set after successful S3 upload
 }
 
+// A soil sample collected from a farm — the code comes from a scanned QR, and
+// we record when (and, best-effort, where) it was taken.
+export interface SoilSample {
+  id: string;            // local uid
+  code: string;          // scanned QR payload (soil sample code)
+  farmId: string;
+  farmerId: string;
+  villageCode: string;
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  createdAt: number;     // when scanned
+  updatedAt: number;
+  synced: boolean;
+}
+
 export interface SessionLocation {
   lat: number;
   lng: number;

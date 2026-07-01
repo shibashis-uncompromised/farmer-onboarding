@@ -1,24 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
-  ThemeIcon,
+  ThemeIcon, Timeline,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
   Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
+  Flask, ClockCounterClockwise, PencilSimple,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getCurrentLocation, fmtCoord } from "@/lib/location";
-import type { Farmer, Farm, SessionLocation, BoundaryPoint } from "@/lib/types";
+import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
+import QrScanner from "./QrScanner";
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -51,14 +53,53 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
 
 function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [plotOpen, plotModal] = useDisclosure(false);
+  const [scanOpen, scanModal] = useDisclosure(false);
+  const [samplesOpen, samplesModal] = useDisclosure(false);
+  const [editOpen, editModal] = useDisclosure(false);
+  const [savingSample, setSavingSample] = useState(false);
   const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
   const url = useBlobUrl(photo?.blob);
+  const soilSamples = useLiveQuery(
+    () => db.soilSamples.where("farmId").equals(farm.id).toArray(),
+    [farm.id]
+  );
+
+  // Scan a soil-sample QR → attach its code to this farm + farmer with a
+  // best-effort location and the scan time. Fully offline (local write).
+  const onScanSample = async (raw: string) => {
+    const code = (raw || "").trim();
+    scanModal.close();
+    if (!code) return;
+    setSavingSample(true);
+    try {
+      let loc: SessionLocation | null = null;
+      try { loc = await getCurrentLocation({ maximumAge: 30000, timeout: 6000 }); } catch { /* location optional */ }
+      const now = Date.now();
+      const sample: SoilSample = {
+        id: uid(), code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
+        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+        createdAt: now, updatedAt: now, synced: false,
+      };
+      await db.soilSamples.add(sample);
+      await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
+      notifications.show({ color: "green", message: `Soil sample ${code} added` });
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not save soil sample" });
+    } finally {
+      setSavingSample(false);
+    }
+  };
 
   return (
     <Card withBorder radius="md" p="sm">
       <Group justify="space-between" mb="xs">
         <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
-        <Text size="xs" c="dimmed">{plots.length} plot{plots.length === 1 ? "" : "s"}</Text>
+        <Group gap={6}>
+          <Text size="xs" c="dimmed">{plots.length} plot{plots.length === 1 ? "" : "s"}</Text>
+          <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label="Edit farm">
+            <PencilSimple size={15} />
+          </ActionIcon>
+        </Group>
       </Group>
       {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
       <Group gap={6} mb="sm">
@@ -67,6 +108,11 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         {farm.boundary && farm.boundary.length > 0 && (
           <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
             {farm.boundary.length}-pt boundary
+          </Badge>
+        )}
+        {(soilSamples?.length ?? 0) > 0 && (
+          <Badge variant="light" color="orange" size="sm" leftSection={<Flask size={11} weight="fill" />}>
+            {soilSamples!.length} soil
           </Badge>
         )}
       </Group>
@@ -87,11 +133,58 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         ))}
       </Stack>
 
-      <Button mt="sm" size="xs" variant="subtle" leftSection={<Plus size={14} />} onClick={plotModal.open}>
-        Add plot
-      </Button>
+      <Group mt="sm" gap={6} grow wrap="nowrap">
+        <Button size="xs" variant="light" leftSection={<Plus size={14} />} onClick={plotModal.open}
+          styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
+          Add plot
+        </Button>
+        <Button size="xs" variant="light" color="orange" leftSection={<Flask size={14} />} onClick={scanModal.open} loading={savingSample}
+          styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
+          Soil sample
+        </Button>
+        <Button size="xs" variant="light" color="gray" leftSection={<ClockCounterClockwise size={14} />} onClick={samplesModal.open}
+          styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
+          View samples
+        </Button>
+      </Group>
+
       <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
+      <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} />
+      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} />
+      <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
     </Card>
+  );
+}
+
+// ---- Timeline of soil samples taken from a farm ----
+function SoilSamplesModal({ opened, onClose, farm, samples }: { opened: boolean; onClose: () => void; farm: Farm; samples: SoilSample[] }) {
+  const sorted = [...samples].sort((a, b) => b.createdAt - a.createdAt);
+  const fmtWhen = (n: number) =>
+    new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <AppModal opened={opened} onClose={onClose} title={`Soil samples · ${farm.id}`}>
+      {sorted.length === 0 ? (
+        <Stack align="center" gap={6} py="lg">
+          <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
+          <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
+          <Text c="dimmed" size="sm">Tap “Soil sample” to scan one</Text>
+        </Stack>
+      ) : (
+        <Timeline active={sorted.length} bulletSize={22} lineWidth={2} color="orange">
+          {sorted.map((s) => (
+            <Timeline.Item key={s.id} bullet={<Flask size={12} weight="fill" />} title={s.code}>
+              <Text size="xs" c="dimmed">{fmtWhen(s.createdAt)}</Text>
+              {s.lat != null && s.lng != null && (
+                <Text size="xs" c="dimmed">
+                  <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}</Group>
+                </Text>
+              )}
+            </Timeline.Item>
+          ))}
+        </Timeline>
+      )}
+    </AppModal>
   );
 }
 
@@ -193,45 +286,93 @@ function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChan
   );
 }
 
-function AddFarmModal({ opened, onClose, farmer }: { opened: boolean; onClose: () => void; farmer: Farmer }) {
+// Add OR edit a farm. Pass `editFarm` to edit an existing one (prefilled);
+// otherwise `farmer` is used to create a new farm.
+function AddFarmModal(
+  { opened, onClose, farmer, editFarm }:
+  { opened: boolean; onClose: () => void; farmer?: Farmer; editFarm?: Farm }
+) {
+  const villageCode = editFarm?.villageCode ?? farmer?.villageCode ?? "";
+  const farmerId = editFarm?.farmerId ?? farmer?.id ?? "";
+
   const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoDirty, setPhotoDirty] = useState(false);
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [boundary, setBoundary] = useState<BoundaryPoint[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const reset = () => { setPhoto(null); setLoc(null); setBoundary([]); };
+  const existingPhoto = useLiveQuery(
+    () => (editFarm?.photoId ? db.media.get(editFarm.photoId) : undefined),
+    [editFarm?.photoId]
+  );
+
+  // Prefill (edit) or clear (add) whenever the modal opens.
+  useEffect(() => {
+    if (!opened) return;
+    setPhotoDirty(false);
+    if (editFarm) {
+      setLoc(editFarm.lat != null && editFarm.lng != null
+        ? { lat: editFarm.lat, lng: editFarm.lng, accuracy: editFarm.accuracy ?? 0, at: editFarm.updatedAt }
+        : null);
+      setBoundary(editFarm.boundary ?? []);
+    } else {
+      setPhoto(null); setLoc(null); setBoundary([]);
+    }
+  }, [opened, editFarm]);
+
+  // Load the existing farm photo (edit mode), unless the user picked a new one.
+  useEffect(() => {
+    if (opened && editFarm && !photoDirty && existingPhoto?.blob) setPhoto(existingPhoto.blob);
+  }, [opened, editFarm, existingPhoto, photoDirty]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const id = await nextFarmId(farmer.villageCode);
-      let photoId: string | null = null;
-      if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: Date.now(), synced: false }); }
       const now = Date.now();
-      await db.farms.add({
-        id, farmerId: farmer.id, villageCode: farmer.villageCode, photoId,
-        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-        boundary: boundary.length ? boundary : undefined,
-        createdAt: now, updatedAt: now, synced: false,
-      });
-      await db.farmers.update(farmer.id, { updatedAt: now, synced: false });
-      notifications.show({ color: "green", message: `Farm ${id} added` });
-      reset();
+      if (editFarm) {
+        let photoId = editFarm.photoId;
+        if (photoDirty) {
+          if (photoId) await db.media.delete(photoId).catch(() => {});
+          if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: now, synced: false }); }
+          else photoId = null;
+        }
+        await db.farms.update(editFarm.id, {
+          photoId, lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          boundary: boundary.length ? boundary : undefined, updatedAt: now, synced: false,
+        });
+        await db.farmers.update(farmerId, { updatedAt: now, synced: false });
+        notifications.show({ color: "green", message: `Farm ${editFarm.id} updated` });
+      } else {
+        const id = await nextFarmId(villageCode);
+        let photoId: string | null = null;
+        if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: now, synced: false }); }
+        await db.farms.add({
+          id, farmerId, villageCode, photoId,
+          lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          boundary: boundary.length ? boundary : undefined,
+          createdAt: now, updatedAt: now, synced: false,
+        });
+        await db.farmers.update(farmerId, { updatedAt: now, synced: false });
+        notifications.show({ color: "green", message: `Farm ${id} added` });
+      }
+      setPhotoDirty(false);
       onClose();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not add farm" });
+      notifications.show({ color: "red", message: e?.message || "Could not save farm" });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title="Add farm">
+    <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.id}` : "Add farm"}>
       <Stack gap="md">
-        <PhotoInput label="Farm photo" value={photo} onChange={setPhoto} height={160} />
+        <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
         <BoundaryCapture points={boundary} onChange={setBoundary} />
-        <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>Save farm</Button>
+        <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
+          {editFarm ? "Update farm" : "Save farm"}
+        </Button>
       </Stack>
     </AppModal>
   );

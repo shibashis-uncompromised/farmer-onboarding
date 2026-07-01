@@ -18,11 +18,12 @@ const fmtTs = (n: number) => new Date(n).toISOString();
 
 // Build a ZIP: farmers.csv, farms.csv, plots.csv + photos named by ID.
 export async function exportAllZip(): Promise<{ farmers: number }> {
-  const [farmers, farms, plots, media] = await Promise.all([
+  const [farmers, farms, plots, media, soilSamples] = await Promise.all([
     db.farmers.toArray(),
     db.farms.toArray(),
     db.plots.toArray(),
     db.media.toArray(),
+    db.soilSamples.toArray(),
   ]);
   const mediaMap = new Map(media.map((m) => [m.id, m.blob]));
   const zip = new JSZip();
@@ -73,6 +74,21 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
         p.id, p.farmId, p.farmerId, p.seq, p.crop, p.lat ?? "", p.lng ?? "",
         p.accuracy ?? "", fmtTs(p.createdAt),
       ])
+    )
+  );
+
+  // soil-samples.csv
+  zip.file(
+    "soil-samples.csv",
+    toCSV(
+      ["Sample Code","Farm ID","Farmer ID","Village","Latitude","Longitude","Accuracy (m)","Collected At"],
+      soilSamples.map((s) => {
+        const v = villageByCode(s.villageCode);
+        return [
+          s.code, s.farmId, s.farmerId, v?.name || s.villageCode,
+          s.lat ?? "", s.lng ?? "", s.accuracy ?? "", fmtTs(s.createdAt),
+        ];
+      })
     )
   );
 
