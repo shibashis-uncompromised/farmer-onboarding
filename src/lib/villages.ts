@@ -27,6 +27,8 @@ export const VILLAGES: Village[] = [
   // Madhya Pradesh villages — IDs use the MP prefix (e.g. MP-SUND-U001).
   { code: "007", name: "Sundrel", block: "Madhya Pradesh", idCode: "SUND", region: "MP" },
   { code: "008", name: "Ajjini", block: "Madhya Pradesh", idCode: "AJNI", region: "MP" },
+  // Gujarat village — IDs use the GJ prefix (e.g. GJ-JUNA-U001).
+  { code: "009", name: "Junagadh", block: "Gujarat", idCode: "JUNA", region: "GJ" },
 ];
 
 export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === code);
@@ -36,6 +38,7 @@ export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === c
 // accounts (admin/field/demo) keep seeing exactly the RJ villages they do today.
 const USER_REGIONS: Record<string, string[]> = {
   mpfield: ["MP"],
+  admin: ["RJ", "GJ"],   // admin sees Rajasthan + Gujarat (Junagadh)
 };
 
 export function regionsForUser(username: string | null | undefined): string[] {
