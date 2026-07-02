@@ -30,6 +30,7 @@ export interface Farmer {
 }
 
 export interface Farm {
+  name?: string;
   id: string;            // RJ{village}F{seq}  e.g. RJ001F001
   farmerId: string;
   villageCode: string;

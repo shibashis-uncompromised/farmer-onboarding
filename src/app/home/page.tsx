@@ -1,5 +1,5 @@
 "use client";
-
+import OfflineMapDownloader from "@/components/OfflineMapDownloader";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,7 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode, Trash,
+  QrCode, Trash,CloudArrowDown,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -27,6 +27,7 @@ import { logout } from "@/lib/auth";
 
 function HomeInner() {
   const router = useRouter();
+  const [offlineMapsOpen, setOfflineMapsOpen] = useState(false);
   const { user, location, syncState, syncNow } = useSession();
   // Villages this user may see (RJ users see RJ villages, mpfield sees MP).
   const villages = useMemo(() => villagesForUser(user.username), [user.username]);
@@ -200,6 +201,8 @@ function HomeInner() {
                   <DotsThreeVertical size={24} weight="bold" />
                 </ActionIcon>
               </Menu.Target>
+
+
               <Menu.Dropdown>
                 <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncState === "syncing"}
                   rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
@@ -208,6 +211,9 @@ function HomeInner() {
                 <Menu.Item leftSection={<DownloadSimple size={16} />} onClick={doExport} disabled={exporting}>
                   {exporting ? "Exporting…" : "Export all (ZIP)"}
                 </Menu.Item>
+                  <Menu.Item leftSection={<CloudArrowDown size={16} />} onClick={() => setOfflineMapsOpen(true)}>
+                    Offline maps
+                  </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item color="red" leftSection={<Trash size={16} />} onClick={() => { setClearPw(""); setClearOpen(true); }}>
                   Clear local data
@@ -216,6 +222,9 @@ function HomeInner() {
                   Sign out
                 </Menu.Item>
               </Menu.Dropdown>
+
+
+
               </Menu>
             </Group>
           </Group>
@@ -325,6 +334,7 @@ function HomeInner() {
           </Group>
         </Stack>
       </AppModal>
+      <OfflineMapDownloader opened={offlineMapsOpen} onClose={() => setOfflineMapsOpen(false)} />
     </Box>
   );
 }

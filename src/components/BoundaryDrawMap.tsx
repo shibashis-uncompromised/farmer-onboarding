@@ -49,16 +49,14 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
   const mapRef = useRef<L.Map | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
 
-  // Keep a live ref to the latest onChange so the map-init effect (which
-  // runs once) never closes over a stale callback.
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return; // init once
-    let cancelled = false; // guards against a late geolocation callback firing after unmount
+    if (!containerRef.current || mapRef.current) return;
+    let cancelled = false;
 
     const center: [number, number] = centerHint
       ? [centerHint.lat, centerHint.lng]
@@ -72,7 +70,6 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
     map.addLayer(drawnItems);
     drawnItemsRef.current = drawnItems;
 
-    // Restore an existing boundary (edit mode) as a non-drawing polygon.
     if (points.length >= 3) {
       const latlngs = points.map((p) => L.latLng(p.lat, p.lng));
       L.polygon(latlngs, { color: "#ffe14d" }).addTo(drawnItems);
@@ -96,7 +93,7 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
     map.addControl(drawControl);
 
     map.on((L as any).Draw.Event.CREATED, (e: any) => {
-      drawnItems.clearLayers(); // one boundary per farm
+      drawnItems.clearLayers();
       drawnItems.addLayer(e.layer);
       onChangeRef.current(layerToPoints(e.layer));
     });
@@ -107,15 +104,14 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
       onChangeRef.current([]);
     });
 
-    // Center on device location if we don't already have a farm location fix.
     if (!centerHint && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          if (cancelled || mapRef.current !== map) return; // map was torn down before this resolved
+          if (cancelled || mapRef.current !== map) return;
           try {
             map.setView([pos.coords.latitude, pos.coords.longitude], DEFAULT_ZOOM, { animate: false });
           } catch {
-            // map's panes were torn down between the guard check above and this call — safe to ignore
+            // ignore
           }
         },
         () => {},
@@ -129,7 +125,19 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // deliberately run once — this owns the map's lifecycle imperatively
+  }, []);
+
+  // Recenter if centerHint changes AFTER the map already exists (e.g. typing
+  // manual coordinates after the modal already opened and initialized).
+  // Skipped once a boundary has been drawn, so it won't yank the view away
+  // from in-progress work.
+  useEffect(() => {
+    if (!mapRef.current || !centerHint) return;
+    if (points.length === 0) {
+      mapRef.current.setView([centerHint.lat, centerHint.lng], DEFAULT_ZOOM);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerHint?.lat, centerHint?.lng]);
 
   return (
     <Box>

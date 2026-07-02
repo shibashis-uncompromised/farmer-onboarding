@@ -2,8 +2,8 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
-  ThemeIcon, Timeline, UnstyledButton,
+  ActionIcon, Badge, Box, Button, Card, Group, Image, NumberInput, Paper, Select, Stack, Text,
+  TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -96,7 +96,10 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   return (
     <Card withBorder radius="md" p="sm">
       <Group justify="space-between" mb="xs">
-        <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+        <Group gap={6}>
+          {farm.name && <Text fw={700} size="sm">{farm.name}</Text>}
+          <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+        </Group>
         <Group gap={6}>
           <Text size="xs" c="dimmed">{plots.length} plot{plots.length === 1 ? "" : "s"}</Text>
           <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label="Edit farm">
@@ -201,6 +204,7 @@ function PlotDetailModal({
         <Paper withBorder radius="md" p="sm">
           <Text size="xs" fw={600} c="dimmed" mb={6}>PARENT FARM</Text>
           <Group gap={8} mb={6}>
+            {farm.name && <Text fw={600} size="sm">{farm.name}</Text>}
             <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
             {farm.boundary && farm.boundary.length > 0 && (
               <Badge variant="light" color="green" size="sm" leftSection={<PolygonIcon size={11} weight="fill" />}>
@@ -240,12 +244,12 @@ function SoilSamplesModal({ opened, onClose, farm, samples }: { opened: boolean;
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={`Soil samples · ${farm.id}`}>
+    <AppModal opened={opened} onClose={onClose} title={`Soil samples · ${farm.name || farm.id}`}>
       {sorted.length === 0 ? (
         <Stack align="center" gap={6} py="lg">
           <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
           <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
-          <Text c="dimmed" size="sm">Tap “Soil sample” to scan one</Text>
+          <Text c="dimmed" size="sm">Tap "Soil sample" to scan one</Text>
         </Stack>
       ) : (
         <Timeline active={sorted.length} bulletSize={22} lineWidth={2} color="orange">
@@ -267,10 +271,15 @@ function SoilSamplesModal({ opened, onClose, farm, samples }: { opened: boolean;
 
 // ---- Reusable location capture row ----
 // Waits for an accurate GPS lock (watchPosition), showing the fix tightening
-// live, instead of grabbing the first coarse (±100m) reading.
+// live, instead of grabbing the first coarse (±100m) reading. Also supports
+// typing in a known coordinate directly — useful when entering data away
+// from the actual field (e.g. from a spreadsheet of known farm locations).
 function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCapture: (l: SessionLocation) => void }) {
   const [busy, setBusy] = useState(false);
-  const [live, setLive] = useState<number | null>(null);   // live accuracy while locking
+  const [live, setLive] = useState<number | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualLat, setManualLat] = useState<number | "">("");
+  const [manualLng, setManualLng] = useState<number | "">("");
 
   const capture = async () => {
     setBusy(true);
@@ -289,6 +298,14 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
     }
   };
 
+  const useManual = () => {
+    if (manualLat === "" || manualLng === "") return;
+    onCapture({ lat: Number(manualLat), lng: Number(manualLng), accuracy: 0, at: Date.now() });
+    setManualOpen(false);
+    setManualLat("");
+    setManualLng("");
+  };
+
   return (
     <Paper withBorder radius="md" p="sm">
       <Group justify="space-between">
@@ -301,7 +318,7 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
             <Text size="xs" c="dimmed">
               {busy
                 ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
-                : loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : "Not captured yet"}
+                : loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)}${loc.accuracy ? ` (±${Math.round(loc.accuracy)}m)` : " (manual)"}` : "Not captured yet"}
             </Text>
           </div>
         </Group>
@@ -309,6 +326,26 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
           {loc ? "Recapture" : "Capture"}
         </Button>
       </Group>
+
+      {!manualOpen ? (
+        <UnstyledButton onClick={() => setManualOpen(true)} mt={8}>
+          <Text size="xs" c="dimmed" td="underline">Or enter coordinates manually</Text>
+        </UnstyledButton>
+      ) : (
+        <Group gap={8} mt={8} align="flex-end">
+          <NumberInput
+            placeholder="Latitude" decimalScale={6} size="xs" style={{ flex: 1 }}
+            value={manualLat} onChange={(v) => setManualLat(v === "" ? "" : Number(v))}
+          />
+          <NumberInput
+            placeholder="Longitude" decimalScale={6} size="xs" style={{ flex: 1 }}
+            value={manualLng} onChange={(v) => setManualLng(v === "" ? "" : Number(v))}
+          />
+          <Button size="xs" onClick={useManual} disabled={manualLat === "" || manualLng === ""}>
+            Use
+          </Button>
+        </Group>
+      )}
     </Paper>
   );
 }
@@ -348,6 +385,7 @@ function AddFarmModal(
   const villageCode = editFarm?.villageCode ?? farmer?.villageCode ?? "";
   const farmerId = editFarm?.farmerId ?? farmer?.id ?? "";
 
+  const [name, setName] = useState("");
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoDirty, setPhotoDirty] = useState(false);
   const [loc, setLoc] = useState<SessionLocation | null>(null);
@@ -364,12 +402,13 @@ function AddFarmModal(
     if (!opened) return;
     setPhotoDirty(false);
     if (editFarm) {
+      setName(editFarm.name || "");
       setLoc(editFarm.lat != null && editFarm.lng != null
         ? { lat: editFarm.lat, lng: editFarm.lng, accuracy: editFarm.accuracy ?? 0, at: editFarm.updatedAt }
         : null);
       setBoundary(editFarm.boundary ?? []);
     } else {
-      setPhoto(null); setLoc(null); setBoundary([]);
+      setName(""); setPhoto(null); setLoc(null); setBoundary([]);
     }
   }, [opened, editFarm]);
 
@@ -382,6 +421,7 @@ function AddFarmModal(
     setSaving(true);
     try {
       const now = Date.now();
+      const trimmedName = name.trim() || undefined;
       if (editFarm) {
         let photoId = editFarm.photoId;
         if (photoDirty) {
@@ -390,6 +430,7 @@ function AddFarmModal(
           else photoId = null;
         }
         await db.farms.update(editFarm.id, {
+          name: trimmedName,
           photoId, lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, updatedAt: now, synced: false,
         });
@@ -400,7 +441,7 @@ function AddFarmModal(
         let photoId: string | null = null;
         if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: now, synced: false }); }
         await db.farms.add({
-          id, farmerId, villageCode, photoId,
+          id, farmerId, villageCode, name: trimmedName, photoId,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined,
           createdAt: now, updatedAt: now, synced: false,
@@ -418,8 +459,12 @@ function AddFarmModal(
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.id}` : "Add farm"}>
+    <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.name || editFarm.id}` : "Add farm"}>
       <Stack gap="md">
+        <TextInput
+          label="Farm name" placeholder="e.g. Badi, North field…" value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
         <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
@@ -456,7 +501,7 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`}>
+    <AppModal opened={opened} onClose={onClose} title={`Add plot to ${farm.name || farm.id}`}>
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
         <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
