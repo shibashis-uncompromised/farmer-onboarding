@@ -6,9 +6,9 @@ import "leaflet-draw"; // extends the global L with L.Control.Draw / L.Draw.Even
 import { Box, Text } from "@mantine/core";
 import type { BoundaryPoint } from "@/lib/types";
 
-// @ts-expect-error - CSS side-effect import, no type declarations needed
+
 import "leaflet/dist/leaflet.css";
-// @ts-expect-error - CSS side-effect import, no type declarations needed
+
 import "leaflet-draw/dist/leaflet.draw.css";
 
 // Bundlers strip the default marker icon paths — point them at a CDN.

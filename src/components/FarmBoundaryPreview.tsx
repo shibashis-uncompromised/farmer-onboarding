@@ -5,7 +5,7 @@ import L from "leaflet";
 import { Box } from "@mantine/core";
 import type { BoundaryPoint } from "@/lib/types";
 
-// @ts-expect-error - CSS side-effect import, no type declarations needed
+
 import "leaflet/dist/leaflet.css";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
