@@ -1,27 +1,28 @@
 "use client";
-
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
   ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
-  ThemeIcon, Timeline,
+  ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
-  Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
-  Flask, ClockCounterClockwise, PencilSimple,
+  Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon as PolygonIcon, MapPin, Trash,
+  Flask, ClockCounterClockwise, PencilSimple, CaretRight,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, fmtCoord } from "@/lib/location";
-import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
+import type { Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
-
+const BoundaryDrawMap = dynamic(() => import("./BoundaryDrawMap"), { ssr: false });
+const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), { ssr: false });
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
   const plots = useLiveQuery(() => db.plots.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -56,6 +57,8 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [scanOpen, scanModal] = useDisclosure(false);
   const [samplesOpen, samplesModal] = useDisclosure(false);
   const [editOpen, editModal] = useDisclosure(false);
+  const [plotDetailOpen, plotDetailModal] = useDisclosure(false);
+  const [selectedPlot, setSelectedPlot] = useState<Plot | null>(null);
   const [savingSample, setSavingSample] = useState(false);
   const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
   const url = useBlobUrl(photo?.blob);
@@ -106,7 +109,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         <MapPinLine size={15} color="var(--mantine-color-green-7)" />
         <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
         {farm.boundary && farm.boundary.length > 0 && (
-          <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
+          <Badge variant="light" color="green" size="sm" leftSection={<PolygonIcon size={11} weight="fill" />}>
             {farm.boundary.length}-pt boundary
           </Badge>
         )}
@@ -119,17 +122,24 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
 
       <Stack gap={6}>
         {plots.map((p) => (
-          <Paper key={p.id} withBorder radius="sm" p={8} bg="gray.0">
-            <Group justify="space-between" wrap="nowrap">
-              <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
-                  <Text size="xs" c="dimmed">Plot {p.seq} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
-                </div>
+          <UnstyledButton
+            key={p.id}
+            w="100%"
+            onClick={() => { setSelectedPlot(p); plotDetailModal.open(); }}
+          >
+            <Paper withBorder radius="sm" p={8} bg="gray.0">
+              <Group justify="space-between" wrap="nowrap">
+                <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                  <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
+                    <Text size="xs" c="dimmed">Plot {p.seq} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+                  </div>
+                </Group>
+                <CaretRight size={16} color="var(--mantine-color-gray-5)" />
               </Group>
-            </Group>
-          </Paper>
+            </Paper>
+          </UnstyledButton>
         ))}
       </Stack>
 
@@ -152,7 +162,74 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} />
       <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
+      <PlotDetailModal opened={plotDetailOpen} onClose={plotDetailModal.close} plot={selectedPlot} farm={farm} />
     </Card>
+  );
+}
+
+// ---- Read-only plot detail — crop, location, and the parent farm's info ----
+function PlotDetailModal({
+  opened, onClose, plot, farm,
+}: { opened: boolean; onClose: () => void; plot: Plot | null; farm: Farm }) {
+  if (!plot) return null;
+
+  return (
+    <AppModal opened={opened} onClose={onClose} title={`Plot ${plot.seq}`}>
+      <Stack gap="md">
+        <Group gap={10}>
+          <ThemeIcon variant="light" color="green" size={44} radius="md">
+            <Plant size={22} weight="duotone" />
+          </ThemeIcon>
+          <div>
+            <Text fw={700} size="lg">{plot.crop || "No crop set"}</Text>
+            <Text size="xs" c="dimmed">Plot {plot.seq} · {plot.id}</Text>
+          </div>
+        </Group>
+
+        <Paper withBorder radius="md" p="sm">
+          <Text size="xs" fw={600} c="dimmed" mb={6}>PLOT LOCATION</Text>
+          {plot.lat != null && plot.lng != null ? (
+            <Group gap={6}>
+              <MapPinLine size={15} color="var(--mantine-color-green-7)" />
+              <Text size="sm">{fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
+            </Group>
+          ) : (
+            <Text size="sm" c="dimmed">Not captured</Text>
+          )}
+        </Paper>
+
+        <Paper withBorder radius="md" p="sm">
+          <Text size="xs" fw={600} c="dimmed" mb={6}>PARENT FARM</Text>
+          <Group gap={8} mb={6}>
+            <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+            {farm.boundary && farm.boundary.length > 0 && (
+              <Badge variant="light" color="green" size="sm" leftSection={<PolygonIcon size={11} weight="fill" />}>
+                {farm.boundary.length}-pt boundary
+              </Badge>
+            )}
+          </Group>
+          <Group gap={6}>
+            <MapPinLine size={15} color="var(--mantine-color-green-7)" />
+            <Text size="sm" c="dimmed">
+              {farm.lat != null && farm.lng != null
+                ? `${fmtCoord(farm.lat)}, ${fmtCoord(farm.lng)}`
+                : "Farm location not captured"}
+            </Text>
+          </Group>
+        </Paper>
+
+        {(farm.boundary && farm.boundary.length >= 3) || (farm.lat != null && farm.lng != null) ? (
+          <Box>
+            <Text size="xs" fw={600} c="dimmed" mb={6}>FARM BOUNDARY</Text>
+            <FarmBoundaryPreview
+              boundary={farm.boundary}
+              markerLat={plot.lat}
+              markerLng={plot.lng}
+            />
+          </Box>
+        ) : null}
+      </Stack>
+    </AppModal>
   );
 }
 
@@ -236,72 +313,28 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
   );
 }
 
-// ---- Boundary capture: stand at each corner / deviation point and add it ----
-function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChange: (p: BoundaryPoint[]) => void }) {
-  const [busy, setBusy] = useState(false);
-  const [live, setLive] = useState<number | null>(null);
-  const addPoint = async () => {
-    setBusy(true);
-    setLive(null);
-    try {
-      // Wait for an accurate lock at this corner (not the first coarse reading).
-      const l = await getBestLocation({
-        targetAccuracy: 10, maxWait: 20000,
-        onProgress: (p) => setLive(Math.round(p.accuracy)),
-      });
-      onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at }]);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not get location" });
-    } finally {
-      setBusy(false);
-      setLive(null);
-    }
-  };
-  const removePoint = (i: number) => onChange(points.filter((_, idx) => idx !== i));
-
+// ---- Boundary capture: draw the farm boundary directly on a map ----
+function BoundaryCapture({
+  points, onChange, centerHint,
+}: {
+  points: BoundaryPoint[];
+  onChange: (p: BoundaryPoint[]) => void;
+  centerHint?: { lat: number; lng: number } | null;
+}) {
   return (
     <Paper withBorder radius="md" p="sm">
-      <Group justify="space-between" mb={points.length ? "xs" : 0}>
-        <Group gap={8}>
-          <ThemeIcon variant="light" color={points.length ? "teal" : "gray"} radius="xl">
-            <Polygon size={18} weight={points.length ? "fill" : "regular"} />
-          </ThemeIcon>
-          <div>
-            <Text size="sm" fw={500}>Farm boundary <Text span size="xs" c="dimmed">(optional)</Text></Text>
-            <Text size="xs" c="dimmed">
-              {busy
-                ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
-                : points.length ? `${points.length} point${points.length === 1 ? "" : "s"} captured` : "Stand at each corner and add a point"}
-            </Text>
-          </div>
-        </Group>
-        <Button size="xs" variant="filled" leftSection={<Plus size={14} />} loading={busy} onClick={addPoint}>
-          Add point
-        </Button>
+      <Group gap={8} mb="xs">
+        <ThemeIcon variant="light" color={points.length ? "teal" : "gray"} radius="xl">
+          <PolygonIcon size={18} weight={points.length ? "fill" : "regular"} />
+        </ThemeIcon>
+        <div>
+          <Text size="sm" fw={500}>Farm boundary <Text span size="xs" c="dimmed">(optional)</Text></Text>
+          <Text size="xs" c="dimmed">
+            {points.length ? `${points.length}-point boundary drawn` : "Draw the boundary on the map below"}
+          </Text>
+        </div>
       </Group>
-      {points.length > 0 && (
-        // Cap the list so a long boundary never pushes "Save farm" off-screen —
-        // the points scroll internally instead.
-        <Box mah={170} style={{ overflowY: "auto" }}>
-          <Stack gap={6}>
-            {points.map((p, i) => (
-              <Paper key={p.at} withBorder radius="sm" p={6} bg="gray.0">
-                <Group justify="space-between" wrap="nowrap">
-                  <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <ThemeIcon variant="light" color="green" size="sm" radius="xl"><MapPin size={12} /></ThemeIcon>
-                    <Text size="xs" truncate>
-                      #{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)
-                    </Text>
-                  </Group>
-                  <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label="Remove point">
-                    <Trash size={14} />
-                  </ActionIcon>
-                </Group>
-              </Paper>
-            ))}
-          </Stack>
-        </Box>
-      )}
+      <BoundaryDrawMap points={points} onChange={onChange} centerHint={centerHint} />
     </Paper>
   );
 }
@@ -389,7 +422,7 @@ function AddFarmModal(
       <Stack gap="md">
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
-        <BoundaryCapture points={boundary} onChange={setBoundary} />
+        <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
         <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
           {editFarm ? "Update farm" : "Save farm"}
         </Button>

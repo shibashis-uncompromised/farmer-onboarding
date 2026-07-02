@@ -1,11 +1,15 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v24";
+const CACHE = "farmer-onboarding-v25";
+// Map tiles live in their own cache, deliberately NOT named with the app
+// version — it must survive app updates (see activate handler below), since
+// re-downloading a village's tiles is slow and costs the agent's data plan.
+const TILE_CACHE = "map-tiles-v1";
+const TILE_HOSTS = ["server.arcgisonline.com"];
 
 // Build-time list of all JS/CSS/font chunks (written by scripts/gen-sw-manifest.mjs).
 try { importScripts("/sw-manifest.js"); } catch (e) {}
 const CHUNKS = self.__PRECACHE_MANIFEST || [];
-
 const SHELLS = [
   "/", "/home/", "/farmer/", "/login/",
   "/manifest.webmanifest",
@@ -24,7 +28,11 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // Keep the current app-shell cache AND the tile cache — only delete
+      // stale app-shell versions (e.g. farmer-onboarding-v23).
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== CACHE && k !== TILE_CACHE).map((k) => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });
@@ -33,6 +41,28 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
+
+  // Map tiles: cross-origin, so this must be handled before the
+  // same-origin-only check below. Cache-first — a cached tile is always
+  // good enough, tiles don't change.
+  if (TILE_HOSTS.includes(url.hostname)) {
+    e.respondWith((async () => {
+      const cached = await caches.match(req, { cacheName: TILE_CACHE });
+      if (cached) return cached;
+      try {
+        const res = await fetch(req);
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(TILE_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      } catch {
+        return cached || Response.error();
+      }
+    })());
+    return;
+  }
+
   if (url.origin !== location.origin) return;
 
   // Navigations: CACHE-FIRST (stale-while-revalidate), cached per PATH (ignoring
@@ -49,7 +79,6 @@ self.addEventListener("fetch", (e) => {
         (await caches.match(url.pathname)) ||
         (await caches.match("/home/")) ||
         (await caches.match("/"));
-
       // Background refresh (don't block the response on the network).
       const fromNetwork = fetch(req)
         .then((res) => {
@@ -60,7 +89,6 @@ self.addEventListener("fetch", (e) => {
           return res;
         })
         .catch(() => null);
-
       // Serve cache immediately if we have it; otherwise wait for the network
       // (first-ever visit, nothing cached yet).
       return cached || (await fromNetwork) || Response.error();
