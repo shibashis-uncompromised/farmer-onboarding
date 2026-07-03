@@ -1,5 +1,7 @@
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import "leaflet/dist/leaflet.css";
+import "leaflet-draw/dist/leaflet.draw.css";
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";

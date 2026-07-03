@@ -1,8 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
+  ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, SegmentedControl, Select, Stack, Text,
   TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -15,6 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
+import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode } from "@/lib/qr";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
@@ -22,6 +24,9 @@ import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
+
+const BoundaryDrawMap = dynamic(() => import("./BoundaryDrawMap"), { ssr: false });
+const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), { ssr: false });
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -298,18 +303,21 @@ function FarmDetailModal(
           </Group>
         </Paper>
 
-        {farm.boundary && farm.boundary.length > 0 && (
+        {((farm.boundary && farm.boundary.length > 0) || (farm.lat != null && farm.lng != null)) && (
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={6}>
-              <Group gap={6} component="span"><Polygon size={16} /> Boundary · {farm.boundary.length} points</Group>
+              <Group gap={6} component="span"><Polygon size={16} /> Boundary · {farm.boundary?.length ?? 0} points</Group>
             </Text>
-            <Box mah={140} style={{ overflowY: "auto" }}>
-              <Stack gap={4}>
-                {farm.boundary.map((p, i) => (
-                  <Text key={p.at} size="xs" c="dimmed">#{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)</Text>
-                ))}
-              </Stack>
-            </Box>
+            <FarmBoundaryPreview boundary={farm.boundary} markerLat={farm.lat} markerLng={farm.lng} height={180} />
+            {farm.boundary && farm.boundary.length > 0 && (
+              <Box mah={120} mt="xs" style={{ overflowY: "auto" }}>
+                <Stack gap={4}>
+                  {farm.boundary.map((p, i) => (
+                    <Text key={p.at} size="xs" c="dimmed">#{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)</Text>
+                  ))}
+                </Stack>
+              </Box>
+            )}
           </Paper>
         )}
 
@@ -407,10 +415,22 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
   );
 }
 
-// ---- Boundary capture: stand at each corner / deviation point and add it ----
-function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChange: (p: BoundaryPoint[]) => void }) {
+type BoundaryMode = "manual" | "map";
+
+// ---- Boundary capture: reliable GPS walk-points, with optional map drawing ----
+function BoundaryCapture({
+  points, onChange, centerHint,
+}: {
+  points: BoundaryPoint[];
+  onChange: (p: BoundaryPoint[]) => void;
+  centerHint?: { lat: number; lng: number } | null;
+}) {
+  const [mode, setMode] = useState<BoundaryMode>("manual");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<number | null>(null);
+  const [tileProgress, setTileProgress] = useState<{ done: number; total: number } | null>(null);
+  const [cachingTiles, setCachingTiles] = useState(false);
+
   const addPoint = async () => {
     setBusy(true);
     setLive(null);
@@ -429,10 +449,32 @@ function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChan
     }
   };
   const removePoint = (i: number) => onChange(points.filter((_, idx) => idx !== i));
+  const cacheCenter = centerHint ?? (points[0] ? { lat: points[0].lat, lng: points[0].lng } : null);
+  const cacheNearbyTiles = async () => {
+    if (!cacheCenter) {
+      notifications.show({ color: "yellow", message: "Capture farm location first to cache nearby map tiles" });
+      return;
+    }
+    setCachingTiles(true);
+    setTileProgress({ done: 0, total: 0 });
+    try {
+      const bounds = boundsAroundPoint(cacheCenter.lat, cacheCenter.lng, 1);
+      const result = await downloadTiles(bounds, {
+        minZoom: 14,
+        maxZoom: 18,
+        onProgress: (done, total) => setTileProgress({ done, total }),
+      });
+      notifications.show({ color: "green", message: `Cached ${result.total} map tiles nearby` });
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not cache map tiles" });
+    } finally {
+      setCachingTiles(false);
+    }
+  };
 
   return (
     <Paper withBorder radius="md" p="sm">
-      <Group justify="space-between" mb={points.length ? "xs" : 0}>
+      <Group justify="space-between" mb="xs" align="flex-start">
         <Group gap={8}>
           <ThemeIcon variant="light" color={points.length ? "teal" : "gray"} radius="xl">
             <Polygon size={18} weight={points.length ? "fill" : "regular"} />
@@ -446,32 +488,61 @@ function BoundaryCapture({ points, onChange }: { points: BoundaryPoint[]; onChan
             </Text>
           </div>
         </Group>
-        <Button size="xs" variant="filled" leftSection={<Plus size={14} />} loading={busy} onClick={addPoint}>
-          Add point
-        </Button>
+        {mode === "manual" && (
+          <Button size="xs" variant="filled" leftSection={<Plus size={14} />} loading={busy} onClick={addPoint}>
+            Add point
+          </Button>
+        )}
       </Group>
-      {points.length > 0 && (
-        // Cap the list so a long boundary never pushes "Save farm" off-screen —
-        // the points scroll internally instead.
-        <Box mah={170} style={{ overflowY: "auto" }}>
-          <Stack gap={6}>
-            {points.map((p, i) => (
-              <Paper key={p.at} withBorder radius="sm" p={6} bg="gray.0">
-                <Group justify="space-between" wrap="nowrap">
-                  <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <ThemeIcon variant="light" color="green" size="sm" radius="xl"><MapPin size={12} /></ThemeIcon>
-                    <Text size="xs" truncate>
-                      #{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)
-                    </Text>
+
+      <SegmentedControl
+        fullWidth
+        size="xs"
+        mb="sm"
+        value={mode}
+        onChange={(value) => setMode(value as BoundaryMode)}
+        data={[
+          { label: "Walk points", value: "manual" },
+          { label: "Draw map", value: "map" },
+        ]}
+      />
+
+      {mode === "map" ? (
+        <Stack gap="xs">
+          <BoundaryDrawMap points={points} onChange={onChange} centerHint={centerHint} />
+          <Group justify="space-between" gap="xs" wrap="nowrap">
+            <Text size="xs" c="dimmed">
+              {tileProgress?.total ? `${tileProgress.done}/${tileProgress.total} tiles cached` : "Cache nearby tiles before working with weak signal"}
+            </Text>
+            <Button size="xs" variant="light" color="gray" loading={cachingTiles} onClick={cacheNearbyTiles}>
+              Cache map
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        points.length > 0 && (
+          // Cap the list so a long boundary never pushes "Save farm" off-screen —
+          // the points scroll internally instead.
+          <Box mah={170} style={{ overflowY: "auto" }}>
+            <Stack gap={6}>
+              {points.map((p, i) => (
+                <Paper key={p.at} withBorder radius="sm" p={6} bg="gray.0">
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                      <ThemeIcon variant="light" color="green" size="sm" radius="xl"><MapPin size={12} /></ThemeIcon>
+                      <Text size="xs" truncate>
+                        #{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)
+                      </Text>
+                    </Group>
+                    <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label="Remove point">
+                      <Trash size={14} />
+                    </ActionIcon>
                   </Group>
-                  <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label="Remove point">
-                    <Trash size={14} />
-                  </ActionIcon>
-                </Group>
-              </Paper>
-            ))}
-          </Stack>
-        </Box>
+                </Paper>
+              ))}
+            </Stack>
+          </Box>
+        )
       )}
     </Paper>
   );
@@ -560,7 +631,7 @@ function AddFarmModal(
       <Stack gap="md">
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
-        <BoundaryCapture points={boundary} onChange={setBoundary} />
+        <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
         <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
           {editFarm ? "Update farm" : "Save farm"}
         </Button>
