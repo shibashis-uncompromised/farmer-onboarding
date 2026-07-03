@@ -186,7 +186,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
         {onManual && (
           <Button
             variant="white" color="dark" radius="xl"
-            onClick={() => { stop(); onManual(); }}
+            onClick={() => { stop(); onClose(); onManual(); }}
             style={{ position: "absolute", bottom: "calc(24px + env(safe-area-inset-bottom))" }}
           >
             Type code manually

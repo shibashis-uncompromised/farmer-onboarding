@@ -185,7 +185,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
       <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
-      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} />
+      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
       <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
     </Card>
@@ -194,8 +194,8 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
 
 // ---- Timeline of soil samples taken from a farm ----
 function SoilSamplesModal(
-  { opened, onClose, farm, samples, onScanMore }:
-  { opened: boolean; onClose: () => void; farm: Farm; samples: SoilSample[]; onScanMore: () => void }
+  { opened, onClose, farm, samples, onScanMore, onManual }:
+  { opened: boolean; onClose: () => void; farm: Farm; samples: SoilSample[]; onScanMore: () => void; onManual: () => void }
 ) {
   const sorted = [...samples].sort((a, b) => b.createdAt - a.createdAt);
   const fmtWhen = (n: number) =>
@@ -216,7 +216,7 @@ function SoilSamplesModal(
           <Stack align="center" gap={6} py="lg">
             <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
             <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
-            <Text c="dimmed" size="sm">Scan a sample QR to add one</Text>
+            <Text c="dimmed" size="sm">Scan a sample QR or type the printed code to add one</Text>
           </Stack>
         ) : (
           <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
@@ -234,10 +234,16 @@ function SoilSamplesModal(
             ))}
           </Timeline>
         )}
-        <Button variant="light" color="orange" leftSection={<Flask size={16} />}
-          onClick={() => { onClose(); onScanMore(); }}>
-          Scan another sample
-        </Button>
+        <Group grow gap="sm">
+          <Button variant="light" color="orange" leftSection={<Flask size={16} />}
+            onClick={() => { onClose(); onScanMore(); }}>
+            Scan QR
+          </Button>
+          <Button variant="light" color="gray" leftSection={<PencilSimple size={16} />}
+            onClick={() => { onClose(); onManual(); }}>
+            Type code
+          </Button>
+        </Group>
       </Stack>
     </AppModal>
   );
