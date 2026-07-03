@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ActionIcon, Box, Button, Text } from "@mantine/core";
-import { X } from "@phosphor-icons/react";
+import { X, Flashlight } from "@phosphor-icons/react";
 import jsQR from "jsqr";
 
 interface Props {
@@ -26,6 +26,8 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
   const firedRef = useRef(false);
   const [hint, setHint] = useState("Point the camera at the QR code");
   const [blocked, setBlocked] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   useEffect(() => {
     if (!opened) return;
@@ -55,6 +57,13 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
       streamRef.current = stream;
       video.srcObject = stream;
       await video.play();
+      // Torch (flashlight) support — available on most Android Chrome cameras.
+      try {
+        const track = stream.getVideoTracks()[0];
+        const caps: any = track.getCapabilities?.();
+        setTorchAvailable(!!caps?.torch);
+      } catch { setTorchAvailable(false); }
+      setTorchOn(false);
       scanningRef.current = true;
       lastDecodeRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
@@ -65,8 +74,21 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
     }
   }
 
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as any] });
+      setTorchOn(next);
+    } catch (e) {
+      console.warn("Torch toggle failed:", e);
+    }
+  }
+
   function stop() {
     scanningRef.current = false;
+    setTorchOn(false);
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     const s = streamRef.current;
     if (s) { s.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
@@ -128,6 +150,14 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
         >
           <X size={22} weight="bold" />
         </ActionIcon>
+        {torchAvailable && (
+          <ActionIcon
+            variant="filled" color={torchOn ? "yellow" : "dark"} radius="xl" size="xl" onClick={toggleTorch}
+            aria-label="Torch" style={{ position: "absolute", top: "max(16px, env(safe-area-inset-top))", left: 16 }}
+          >
+            <Flashlight size={22} weight={torchOn ? "fill" : "bold"} />
+          </ActionIcon>
+        )}
 
         <Box
           style={{

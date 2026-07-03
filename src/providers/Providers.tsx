@@ -9,14 +9,32 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    // Auto-update: when a new service worker is deployed, install it and reload
-    // the page once so the user always lands on the latest version when online.
+    // Auto-update: when a new service worker is deployed, reload once so the
+    // user lands on the latest version — but NEVER mid-work. If a modal is open
+    // or a field is focused (surveyor typing), defer the reload until the app
+    // is backgrounded, so unsaved form input is never wiped by an update.
     let reloaded = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
+    let pending = false;
+    const userIsBusy = () =>
+      !!document.querySelector('[role="dialog"]') ||
+      ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName || "");
+    const applyUpdate = () => {
       if (reloaded) return;
+      if (userIsBusy()) {
+        pending = true;                       // reload later, invisibly
+        return;
+      }
       reloaded = true;
       window.location.reload();
+    };
+    document.addEventListener("visibilitychange", () => {
+      // App went to background with an update pending → reload now (invisible).
+      if (pending && document.hidden && !reloaded) {
+        reloaded = true;
+        window.location.reload();
+      }
     });
+    navigator.serviceWorker.addEventListener("controllerchange", applyUpdate);
 
     navigator.serviceWorker.register("/sw.js").then((reg) => {
       reg.update().catch(() => {});
@@ -25,9 +43,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         if (!nw) return;
         nw.addEventListener("statechange", () => {
           // a NEW worker activated while a controller already existed = an update
-          if (nw.state === "activated" && navigator.serviceWorker.controller && !reloaded) {
-            reloaded = true;
-            window.location.reload();
+          if (nw.state === "activated" && navigator.serviceWorker.controller) {
+            applyUpdate();
           }
         });
       });

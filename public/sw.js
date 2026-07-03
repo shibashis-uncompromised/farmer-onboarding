@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v25";
+const CACHE = "farmer-onboarding-v26";
 
 // Build-time list of all JS/CSS/font chunks (written by scripts/gen-sw-manifest.mjs).
 try { importScripts("/sw-manifest.js"); } catch (e) {}

@@ -15,6 +15,7 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, fmtCoord } from "@/lib/location";
+import { looksLikeFarmerCode } from "@/lib/qr";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
@@ -70,6 +71,17 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
     const code = (raw || "").trim();
     scanModal.close();
     if (!code) return;
+    // Guard against scanning the wrong QR type by mistake.
+    if (looksLikeFarmerCode(code)) {
+      notifications.show({ color: "red", message: `${code} is a farmer QR — not a soil sample` });
+      return;
+    }
+    // Same sample code already recorded for this farm → don't duplicate.
+    const dup = (soilSamples || []).find((s) => s.code === code);
+    if (dup) {
+      notifications.show({ color: "blue", message: `Sample ${code} is already added to this farm` });
+      return;
+    }
     setSavingSample(true);
     try {
       let loc: SessionLocation | null = null;

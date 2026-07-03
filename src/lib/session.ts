@@ -35,6 +35,30 @@ export function remainingIds(): number {
   return s ? capacity(s.blocks) - s.used : 0;
 }
 
+// Proactively claim the next ID block while ONLINE, before the current one runs
+// dry — so a surveyor never hits "Out of offline IDs" mid-survey in the field.
+// Called from the background sync tick; silent and best-effort.
+let refilling = false;
+export async function ensureIdHeadroom(threshold = 20): Promise<void> {
+  const s = getSession();
+  if (!s || refilling) return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  if (capacity(s.blocks) - s.used > threshold) return;   // plenty left
+  refilling = true;
+  try {
+    const r = await apiAllocate(s.token);
+    // Re-read the session: `used` may have advanced while the request ran.
+    const cur = getSession();
+    if (!cur) return;
+    cur.blocks.push(r.allocated);
+    setSession(cur);
+  } catch {
+    // Offline/flaky — fine, we'll retry on a later sync tick.
+  } finally {
+    refilling = false;
+  }
+}
+
 // Allocate the next globally-unique ID number from this user's block(s).
 // If the block is exhausted, fetch a new one (online). Throws if offline & dry.
 export async function allocateNumber(): Promise<number> {

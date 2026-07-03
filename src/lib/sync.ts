@@ -1,7 +1,7 @@
 import type { Table } from "dexie";
 import { db } from "./db";
 import { apiSync, apiPull, apiPresignMedia, fetchWithTimeout } from "./api";
-import { getSession } from "./session";
+import { getSession, ensureIdHeadroom } from "./session";
 
 // Merge server records into a local table, last-write-wins by updatedAt.
 // Pulled records are marked synced (they're reconciled with the server).
@@ -27,6 +27,9 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   const s = getSession();
   if (!s) throw new Error("Not signed in");
   if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("You're offline — connect to sync");
+
+  // 0) top up the offline ID block while we have connectivity (fire-and-forget)
+  ensureIdHeadroom().catch(() => {});
 
   // 1) upload unsynced media blobs directly to S3 via presigned URLs
   const allMedia = await db.media.toArray();
