@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, Select, Stack, Text,
-  ThemeIcon, Timeline,
+  TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -14,7 +14,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
-import { getBestLocation, fmtCoord } from "@/lib/location";
+import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { looksLikeFarmerCode } from "@/lib/qr";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
@@ -57,7 +57,8 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [scanOpen, scanModal] = useDisclosure(false);
   const [samplesOpen, samplesModal] = useDisclosure(false);
   const [editOpen, editModal] = useDisclosure(false);
-  const [savingSample, setSavingSample] = useState(false);
+  const [detailOpen, detailModal] = useDisclosure(false);
+  const [manualOpen, manualModal] = useDisclosure(false);
   const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
   const url = useBlobUrl(photo?.blob);
   const soilSamples = useLiveQuery(
@@ -65,11 +66,14 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
     [farm.id]
   );
 
-  // Scan a soil-sample QR → attach its code to this farm + farmer with a
-  // best-effort location and the scan time. Fully offline (local write).
+  // Scan (or type) a soil-sample code → SAVE IMMEDIATELY with a backup location
+  // (farm coords → last known GPS), then improve the location in the background
+  // when a fresh GPS lock arrives. The save itself never waits on GPS or
+  // network, so adding a sample can never get stuck — even fully offline.
   const onScanSample = async (raw: string) => {
     const code = (raw || "").trim();
     scanModal.close();
+    manualModal.close();
     if (!code) return;
     // Guard against scanning the wrong QR type by mistake.
     if (looksLikeFarmerCode(code)) {
@@ -82,23 +86,38 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       notifications.show({ color: "blue", message: `Sample ${code} is already added to this farm` });
       return;
     }
-    setSavingSample(true);
     try {
-      let loc: SessionLocation | null = null;
-      try { loc = await getBestLocation({ targetAccuracy: 15, maxWait: 8000 }); } catch { /* location optional */ }
+      // Backup location, instantly available: the farm's own coords, else the
+      // device's last known fix. Refined below when live GPS locks.
+      const last = getLastLocation();
+      const backup = farm.lat != null && farm.lng != null
+        ? { lat: farm.lat, lng: farm.lng, accuracy: farm.accuracy ?? null }
+        : last ? { lat: last.lat, lng: last.lng, accuracy: last.accuracy } : null;
       const now = Date.now();
-      const sample: SoilSample = {
-        id: uid(), code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
-        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+      const sampleId = uid();
+      await db.soilSamples.add({
+        id: sampleId, code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
+        lat: backup?.lat ?? null, lng: backup?.lng ?? null, accuracy: backup?.accuracy ?? null,
         createdAt: now, updatedAt: now, synced: false,
-      };
-      await db.soilSamples.add(sample);
+      });
       await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
       notifications.show({ color: "green", message: `Soil sample ${code} added` });
+
+      // Background: replace the backup with a live GPS fix if we get a better one.
+      getBestLocation({ targetAccuracy: 10, maxWait: 20000 })
+        .then(async (best) => {
+          const cur = await db.soilSamples.get(sampleId);
+          if (!cur) return;
+          if (cur.accuracy == null || best.accuracy < cur.accuracy) {
+            await db.soilSamples.update(sampleId, {
+              lat: best.lat, lng: best.lng, accuracy: best.accuracy,
+              updatedAt: Date.now(), synced: false,
+            });
+          }
+        })
+        .catch(() => {});   // no GPS → backup location stands
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not save soil sample" });
-    } finally {
-      setSavingSample(false);
     }
   };
 
@@ -113,21 +132,24 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
           </ActionIcon>
         </Group>
       </Group>
-      {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
-      <Group gap={6} mb="sm">
-        <MapPinLine size={15} color="var(--mantine-color-green-7)" />
-        <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
-        {farm.boundary && farm.boundary.length > 0 && (
-          <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
-            {farm.boundary.length}-pt boundary
-          </Badge>
-        )}
-        {(soilSamples?.length ?? 0) > 0 && (
-          <Badge variant="light" color="orange" size="sm" leftSection={<Flask size={11} weight="fill" />}>
-            {soilSamples!.length} soil
-          </Badge>
-        )}
-      </Group>
+      {/* Tapping the card body opens the farm's detail view */}
+      <UnstyledButton w="100%" onClick={detailModal.open} aria-label="Farm details">
+        {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
+        <Group gap={6} mb="sm">
+          <MapPinLine size={15} color="var(--mantine-color-green-7)" />
+          <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
+          {farm.boundary && farm.boundary.length > 0 && (
+            <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
+              {farm.boundary.length}-pt boundary
+            </Badge>
+          )}
+          {(soilSamples?.length ?? 0) > 0 && (
+            <Badge variant="light" color="orange" size="sm" leftSection={<Flask size={11} weight="fill" />}>
+              {soilSamples!.length} soil
+            </Badge>
+          )}
+        </Group>
+      </UnstyledButton>
 
       <Stack gap={6}>
         {plots.map((p) => (
@@ -150,7 +172,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
           Add plot
         </Button>
-        <Button size="xs" variant="light" color="orange" leftSection={<Flask size={14} />} onClick={scanModal.open} loading={savingSample}
+        <Button size="xs" variant="light" color="orange" leftSection={<Flask size={14} />} onClick={scanModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
           Soil sample
         </Button>
@@ -161,41 +183,164 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       </Group>
 
       <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
-      <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} />
-      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} />
+      <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
+      <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
+      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
+      <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
     </Card>
   );
 }
 
 // ---- Timeline of soil samples taken from a farm ----
-function SoilSamplesModal({ opened, onClose, farm, samples }: { opened: boolean; onClose: () => void; farm: Farm; samples: SoilSample[] }) {
+function SoilSamplesModal(
+  { opened, onClose, farm, samples, onScanMore }:
+  { opened: boolean; onClose: () => void; farm: Farm; samples: SoilSample[]; onScanMore: () => void }
+) {
   const sorted = [...samples].sort((a, b) => b.createdAt - a.createdAt);
   const fmtWhen = (n: number) =>
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  // "Today", "Yesterday", or the date — friendlier for surveyors.
+  const dayLabel = (n: number) => {
+    const d = new Date(n), t = new Date();
+    const y = new Date(); y.setDate(t.getDate() - 1);
+    const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={`Soil samples · ${farm.id}`}>
-      {sorted.length === 0 ? (
-        <Stack align="center" gap={6} py="lg">
-          <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
-          <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
-          <Text c="dimmed" size="sm">Tap “Soil sample” to scan one</Text>
-        </Stack>
-      ) : (
-        <Timeline active={sorted.length} bulletSize={22} lineWidth={2} color="orange">
-          {sorted.map((s) => (
-            <Timeline.Item key={s.id} bullet={<Flask size={12} weight="fill" />} title={s.code}>
-              <Text size="xs" c="dimmed">{fmtWhen(s.createdAt)}</Text>
-              {s.lat != null && s.lng != null && (
+    <AppModal opened={opened} onClose={onClose}
+      title={`Soil samples · ${farm.id}${sorted.length ? ` (${sorted.length})` : ""}`}>
+      <Stack gap="md">
+        {sorted.length === 0 ? (
+          <Stack align="center" gap={6} py="lg">
+            <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
+            <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
+            <Text c="dimmed" size="sm">Scan a sample QR to add one</Text>
+          </Stack>
+        ) : (
+          <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
+            {sorted.map((s) => (
+              <Timeline.Item key={s.id} bullet={<Flask size={13} weight="fill" />}
+                title={<Group gap={6}><Text fw={700} size="sm">{s.code}</Text>
+                  {!s.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}</Group>}>
+                <Text size="xs" c="dimmed">{dayLabel(s.createdAt)} · {fmtWhen(s.createdAt)}</Text>
                 <Text size="xs" c="dimmed">
-                  <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}</Group>
+                  {s.lat != null && s.lng != null
+                    ? <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}{s.accuracy != null ? ` (±${Math.round(s.accuracy)}m)` : ""}</Group>
+                    : "No location recorded"}
                 </Text>
-              )}
-            </Timeline.Item>
-          ))}
-        </Timeline>
-      )}
+              </Timeline.Item>
+            ))}
+          </Timeline>
+        )}
+        <Button variant="light" color="orange" leftSection={<Flask size={16} />}
+          onClick={() => { onClose(); onScanMore(); }}>
+          Scan another sample
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Manual entry fallback when a QR won't scan (damaged / poor light) ----
+function ManualSampleModal(
+  { opened, onClose, onSubmit }:
+  { opened: boolean; onClose: () => void; onSubmit: (code: string) => void }
+) {
+  const [code, setCode] = useState("");
+  useEffect(() => { if (opened) setCode(""); }, [opened]);
+  const submit = () => { const c = code.trim(); if (c) onSubmit(c); };
+  return (
+    <AppModal opened={opened} onClose={onClose} title="Enter sample code">
+      <Stack gap="md">
+        <TextInput
+          label="Soil sample code" placeholder="Code printed under the QR"
+          value={code} onChange={(e) => setCode(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+          autoCapitalize="characters" data-autofocus
+        />
+        <Button leftSection={<Flask size={16} />} color="orange" onClick={submit} disabled={!code.trim()}>
+          Add sample
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Read-only farm detail view (tap the farm card) ----
+function FarmDetailModal(
+  { opened, onClose, farm, plots, samples, photoUrl, onEdit }:
+  { opened: boolean; onClose: () => void; farm: Farm; plots: any[]; samples: SoilSample[]; photoUrl: string | null; onEdit: () => void }
+) {
+  const fmtWhen = (n: number) =>
+    new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <AppModal opened={opened} onClose={onClose} title={`Farm · ${farm.id}`}>
+      <Stack gap="md">
+        {photoUrl && <Image src={photoUrl} h={180} radius="md" fit="cover" alt="farm" />}
+
+        <Paper withBorder radius="md" p="sm">
+          <Group gap={8}>
+            <ThemeIcon variant="light" color="green" radius="xl"><MapPinLine size={18} /></ThemeIcon>
+            <div>
+              <Text size="sm" fw={500}>Location</Text>
+              <Text size="xs" c="dimmed">
+                {farm.lat != null ? `${fmtCoord(farm.lat)}, ${fmtCoord(farm.lng)}${farm.accuracy != null ? ` (±${Math.round(farm.accuracy)}m)` : ""}` : "Not captured"}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+
+        {farm.boundary && farm.boundary.length > 0 && (
+          <Paper withBorder radius="md" p="sm">
+            <Text size="sm" fw={500} mb={6}>
+              <Group gap={6} component="span"><Polygon size={16} /> Boundary · {farm.boundary.length} points</Group>
+            </Text>
+            <Box mah={140} style={{ overflowY: "auto" }}>
+              <Stack gap={4}>
+                {farm.boundary.map((p, i) => (
+                  <Text key={p.at} size="xs" c="dimmed">#{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)</Text>
+                ))}
+              </Stack>
+            </Box>
+          </Paper>
+        )}
+
+        <Paper withBorder radius="md" p="sm">
+          <Text size="sm" fw={500} mb={6}>
+            <Group gap={6} component="span"><Plant size={16} /> Plots · {plots.length}</Group>
+          </Text>
+          {plots.length === 0 ? (
+            <Text size="xs" c="dimmed">No plots yet</Text>
+          ) : (
+            <Stack gap={4}>
+              {plots.map((p) => (
+                <Text key={p.id} size="xs" c="dimmed">Plot {p.seq} · {p.crop || "—"} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+
+        <Paper withBorder radius="md" p="sm">
+          <Text size="sm" fw={500} mb={6}>
+            <Group gap={6} component="span"><Flask size={16} /> Soil samples · {samples.length}</Group>
+          </Text>
+          {samples.length === 0 ? (
+            <Text size="xs" c="dimmed">No samples yet</Text>
+          ) : (
+            <Stack gap={4}>
+              {[...samples].sort((a, b) => b.createdAt - a.createdAt).map((s) => (
+                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}</Text>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+
+        <Button variant="light" leftSection={<PencilSimple size={16} />} onClick={onEdit}>
+          Edit farm
+        </Button>
+      </Stack>
     </AppModal>
   );
 }
@@ -217,7 +362,15 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
       });
       onCapture(best);
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not get location" });
+      // GPS failed (indoors / blocked) → fall back to the last known good fix
+      // so the surveyor is never stuck without a location.
+      const last = getLastLocation();
+      if (last) {
+        onCapture(last);
+        notifications.show({ color: "yellow", message: `GPS unavailable — used last known location (±${Math.round(last.accuracy)}m)` });
+      } else {
+        notifications.show({ color: "red", message: e?.message || "Could not get location" });
+      }
     } finally {
       setBusy(false);
       setLive(null);

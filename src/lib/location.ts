@@ -51,8 +51,10 @@ export function getBestLocation(opts: BestLocationOpts = {}): Promise<SessionLoc
       if (done) return;
       done = true;
       cleanup();
-      if (best) resolve(best);
-      else reject(new Error("Couldn’t get a GPS fix — try open sky"));
+      if (best) {
+        saveLastLocation(best);   // keep the offline backup location fresh
+        resolve(best);
+      } else reject(new Error("Couldn’t get a GPS fix — try open sky"));
     };
     const onAbort = () => { if (done) return; done = true; cleanup(); reject(new Error("cancelled")); };
     if (opts.signal) {

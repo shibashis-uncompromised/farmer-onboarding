@@ -19,7 +19,13 @@ function FarmerInner() {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get("id") || "";
-  const [active, setActive] = useState(0);
+  // Persist the current step in the URL so a refresh on Farms & Plots stays
+  // there instead of bouncing back to Bio Data.
+  const [active, setActiveState] = useState(() => (params.get("step") === "1" ? 1 : 0));
+  const setActive = (step: number) => {
+    setActiveState(step);
+    try { router.replace(`/farmer?id=${encodeURIComponent(id)}&step=${step}`, { scroll: false }); } catch {}
+  };
 
   const farmer = useLiveQuery(() => db.farmers.get(id), [id]);
   const farmCount = useLiveQuery(() => db.farms.where("farmerId").equals(id).count(), [id]) ?? 0;

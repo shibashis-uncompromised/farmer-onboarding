@@ -9,6 +9,7 @@ interface Props {
   opened: boolean;
   onClose: () => void;
   onScan: (raw: string) => void;
+  onManual?: () => void;   // optional "type the code manually" escape hatch
 }
 
 // On-demand camera + jsQR decode loop. Fully offline (camera + local decode).
@@ -16,13 +17,14 @@ interface Props {
 const SCAN_INTERVAL = 50;
 const SCAN_MAX_DIM = 800;
 
-export default function QrScanner({ opened, onClose, onScan }: Props) {
+export default function QrScanner({ opened, onClose, onScan, onManual }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const scanningRef = useRef(false);
   const lastDecodeRef = useRef(0);
+  const frameRef = useRef(0);
   const firedRef = useRef(false);
   const [hint, setHint] = useState("Point the camera at the QR code");
   const [blocked, setBlocked] = useState(false);
@@ -110,7 +112,11 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (ctx) {
           ctx.drawImage(video, 0, 0, w, h);
-          const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+          // Alternate inversion mode between frames: normal (black-on-white)
+          // decodes stay fast, and inverted / low-contrast prints still lock
+          // within a frame or two.
+          const invert = (frameRef.current++ % 2 === 0) ? "dontInvert" : "attemptBoth";
+          const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: invert as any });
           if (code && code.data) { fire(code.data.trim()); return; }
         }
       }
@@ -175,6 +181,15 @@ export default function QrScanner({ opened, onClose, onScan }: Props) {
             style={{ position: "absolute", bottom: "10%" }}
           >
             Retry camera
+          </Button>
+        )}
+        {onManual && (
+          <Button
+            variant="white" color="dark" radius="xl"
+            onClick={() => { stop(); onManual(); }}
+            style={{ position: "absolute", bottom: "calc(24px + env(safe-area-inset-bottom))" }}
+          >
+            Type code manually
           </Button>
         )}
       </Box>
