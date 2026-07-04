@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v36";
+const CACHE = "farmer-onboarding-v37";
 const TILE_CACHE = "map-tiles-v1";
 const TILE_HOSTS = ["server.arcgisonline.com"];
 
@@ -57,6 +57,40 @@ self.addEventListener("fetch", (e) => {
   }
 
   if (url.origin !== location.origin) return;
+
+  // Next static-export client navigations fetch route payloads like
+  // /farmer/index.txt?id=...&_rsc=... before rendering the page. Those payloads
+  // are route-level, not query-specific, so serve them cache-first by pathname.
+  // This keeps farmer-card taps, back/home taps, and sign-in redirects working
+  // when the network is offline, slow, or changing state mid-click.
+  if (url.pathname.endsWith("/index.txt") || url.searchParams.has("_rsc")) {
+    e.respondWith((async () => {
+      const keys = [
+        url.origin + url.pathname,
+        url.pathname,
+      ];
+      let cached = null;
+      for (const key of keys) {
+        cached = await caches.match(key);
+        if (cached) break;
+      }
+
+      const fromNetwork = fetch(req)
+        .then((res) => {
+          if (res.ok && !res.redirected) {
+            caches.open(CACHE).then((c) => {
+              c.put(url.origin + url.pathname, res.clone()).catch(() => {});
+              c.put(url.pathname, res.clone()).catch(() => {});
+            }).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => null);
+
+      return cached || (await fromNetwork) || Response.error();
+    })());
+    return;
+  }
 
   // Navigations: CACHE-FIRST (stale-while-revalidate), cached per PATH (ignoring
   // ?query) so /farmer/?id=123 reuses the cached /farmer/ shell. Serving from

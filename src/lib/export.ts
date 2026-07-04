@@ -86,7 +86,7 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "soil-samples.csv",
     toCSV(
-      ["Sample Code","Farm ID","Farmer ID","Village","Past Crops","Latitude","Longitude","Accuracy (m)","Collected At"],
+      ["Sample Code","Farm ID","Farmer ID","Village","Previous Crop","Latitude","Longitude","Accuracy (m)","Collected At"],
       soilSamples.map((s) => {
         const v = villageByCode(s.villageCode);
         return [

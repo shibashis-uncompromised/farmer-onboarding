@@ -87,7 +87,7 @@ export interface SoilSample {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
-  pastCrops?: string;    // previous crops on this plot (for research)
+  pastCrops?: string;    // previous crop on this plot
   createdAt: number;     // when scanned
   updatedAt: number;
   synced: boolean;

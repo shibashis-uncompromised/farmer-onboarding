@@ -14,11 +14,11 @@ function walk(dir) {
     if (e.isDirectory()) walk(p);
     else {
       const url = "/" + path.relative(OUT, p).split(path.sep).join("/");
-      if (/\.(js|css|woff2?)$/.test(url)) acc.push(url);
+      if (/\.(js|css|woff2?|txt)$/.test(url)) acc.push(url);
     }
   }
 }
 
-walk(path.join(OUT, "_next"));
+walk(OUT);
 fs.writeFileSync(path.join(OUT, "sw-manifest.js"), `self.__PRECACHE_MANIFEST=${JSON.stringify(acc)};`);
 console.log(`sw-manifest.js: ${acc.length} static assets precached`);

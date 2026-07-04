@@ -48,6 +48,13 @@ export function looksLikeFarmerCode(code: string): boolean {
   return /^[A-Z]{2,}-[A-Z0-9]+-[UF]\d+$/i.test((code || "").trim());
 }
 
+export function isReservedImportedFarmerCode(code: string): boolean {
+  const m = /^RJ-(AMOD|VELA)-U(\d{3})$/i.exec((code || "").trim());
+  if (!m) return false;
+  const seq = Number(m[2]);
+  return m[1].toUpperCase() === "AMOD" ? seq >= 1 && seq <= 22 : seq >= 1 && seq <= 19;
+}
+
 // Soil-sample codes look like RJ-AMOD-SA001 / RJ-VELA-SB034:
 //   <REGION>-<VILLAGE>-S<letter><digits>
 export function looksLikeSoilCode(code: string): boolean {

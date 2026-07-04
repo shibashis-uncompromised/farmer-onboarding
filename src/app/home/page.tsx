@@ -21,7 +21,7 @@ import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
 import AppModal from "@/components/AppModal";
 import QrScanner from "@/components/QrScanner";
-import { parseQr, looksLikeFarmerCode } from "@/lib/qr";
+import { parseQr, looksLikeFarmerCode, isReservedImportedFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
 
@@ -163,6 +163,17 @@ function HomeInner() {
       notifications.show({ color: "yellow", message: `${code} is hidden/deleted` });
     } else if (existing) {
       router.push(`/farmer/?id=${encodeURIComponent(code)}`);
+    } else if (isReservedImportedFarmerCode(code)) {
+      const r = await syncNow();
+      const pulled = await db.farmers.get(code);
+      if (pulled && !pulled.deleted) {
+        router.push(`/farmer/?id=${encodeURIComponent(code)}`);
+      } else {
+        notifications.show({
+          color: r ? "yellow" : "red",
+          message: r ? `${code} is not available locally yet. Sync again before opening it.` : `${code} is pre-registered. Connect and sync before opening it.`,
+        });
+      }
     } else {
       setScannedCode(code);
       setAddOpen(true);

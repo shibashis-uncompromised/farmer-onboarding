@@ -34,6 +34,7 @@ export default function SessionGate({ children }: { children: React.ReactNode })
   const [loc, setLoc] = useState<SessionLocation | null>(() => getLastLocation());
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const running = useRef(false);
+  const queued = useRef(false);
 
   const refreshLocation = useCallback(async () => {
     const l = await getCurrentLocation();
@@ -44,7 +45,10 @@ export default function SessionGate({ children }: { children: React.ReactNode })
 
   // One guarded sync pass. Never overlaps, never throws, never toasts.
   const syncNow = useCallback(async () => {
-    if (running.current) return null;
+    if (running.current) {
+      queued.current = true;
+      return null;
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) { setSyncState("offline"); return null; }
     running.current = true;
     setSyncState("syncing");
@@ -57,6 +61,10 @@ export default function SessionGate({ children }: { children: React.ReactNode })
       return null;
     } finally {
       running.current = false;
+      if (queued.current && typeof navigator !== "undefined" && navigator.onLine) {
+        queued.current = false;
+        setTimeout(() => { syncNow(); }, 0);
+      }
     }
   }, []);
 

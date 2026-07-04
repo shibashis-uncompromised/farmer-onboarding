@@ -20,7 +20,7 @@ import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
 import { useSession } from "@/providers/SessionGate";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
-import { CROPS } from "@/lib/crops";
+import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
@@ -270,7 +270,7 @@ function SoilSamplesModal(
                     ? <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}{s.accuracy != null ? ` (±${Math.round(s.accuracy)}m)` : ""}</Group>
                     : "No location recorded"}
                 </Text>
-                {s.pastCrops && <Text size="xs" c="dimmed"><Group gap={4} component="span"><Plant size={11} /> Past crops: {s.pastCrops}</Group></Text>}
+                {s.pastCrops && <Text size="xs" c="dimmed"><Group gap={4} component="span"><Plant size={11} /> Previous crop: {s.pastCrops}</Group></Text>}
               </Timeline.Item>
             ))}
           </Timeline>
@@ -315,29 +315,32 @@ function ManualSampleModal(
   );
 }
 
-// ---- Past crops for a soil sample (research) — shown after a valid code ----
+// ---- Previous crop for a soil sample — shown after a valid code ----
 function SoilCropModal(
   { opened, onClose, code, onSave }:
   { opened: boolean; onClose: () => void; code: string | null; onSave: (pastCrops: string) => void }
 ) {
-  const [crops, setCrops] = useState("");
-  useEffect(() => { if (opened) setCrops(""); }, [opened]);
+  const [crop, setCrop] = useState<string | null>(null);
+  useEffect(() => { if (opened) setCrop(null); }, [opened]);
   return (
-    <AppModal opened={opened} onClose={onClose} title="Soil sample — past crops">
+    <AppModal opened={opened} onClose={onClose} title="Soil sample — previous crop">
       <Stack gap="md">
         <Group gap={6}>
           <ThemeIcon variant="light" color="orange" radius="xl"><Flask size={16} weight="fill" /></ThemeIcon>
           <Text fw={700}>{code}</Text>
         </Group>
-        <TextInput
-          label="Past / previous crops"
-          description="What was grown on this plot before (for research). Optional."
-          placeholder="e.g. Wheat, Cotton (last 1–2 seasons)"
-          value={crops} onChange={(e) => setCrops(e.currentTarget.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSave(crops); } }}
+        <Select
+          label="Previous crop"
+          placeholder="Select previous crop"
+          data={PREVIOUS_CROPS}
+          value={crop}
+          onChange={setCrop}
+          searchable
+          checkIconPosition="right"
           data-autofocus
+          required
         />
-        <Button color="orange" leftSection={<Flask size={16} />} onClick={() => onSave(crops)}>
+        <Button color="orange" leftSection={<Flask size={16} />} onClick={() => crop && onSave(crop)} disabled={!crop}>
           Save soil sample
         </Button>
       </Stack>
@@ -415,7 +418,7 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {[...samples].sort((a, b) => b.createdAt - a.createdAt).map((s) => (
-                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · past: ${s.pastCrops}` : ""}</Text>
+                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · previous: ${s.pastCrops}` : ""}</Text>
               ))}
             </Stack>
           )}
