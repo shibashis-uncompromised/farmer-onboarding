@@ -4,7 +4,7 @@ import { allocateNumber, getSession } from "./session";
 
 const pad3 = (n: number) => String(n).padStart(3, "0");
 const ab = (villageCode: string) => villageByCode(villageCode)?.idCode || villageCode;
-const IMPORTED_FARMER_RESERVED_MAX: Record<string, number> = { "001": 19, "002": 22 };
+const IMPORTED_FARMER_RESERVED_MAX: Record<string, number> = { "001": 19, "002": 22, "003": 16 };
 
 // ID prefix resolution. The demo account uses DEMO- so its data is clearly
 // separate; otherwise the prefix comes from the village's region (RJ / MP),
