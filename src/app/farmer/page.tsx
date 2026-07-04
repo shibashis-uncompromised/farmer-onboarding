@@ -27,7 +27,10 @@ function FarmerInner() {
     try { router.replace(`/farmer?id=${encodeURIComponent(id)}&step=${step}`, { scroll: false }); } catch {}
   };
 
-  const farmer = useLiveQuery(() => db.farmers.get(id), [id]);
+  const farmer = useLiveQuery(async () => {
+    const f = await db.farmers.get(id);
+    return f?.deleted ? null : f;
+  }, [id]);
   const farmCount = useLiveQuery(async () => (await db.farms.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
   const plotCount = useLiveQuery(async () => (await db.plots.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
 

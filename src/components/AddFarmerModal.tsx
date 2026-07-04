@@ -49,6 +49,11 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
       if (scannedCode) {
         const existing = await db.farmers.get(id);
         if (existing) {
+          if (existing.deleted) {
+            notifications.show({ color: "yellow", message: `${id} is hidden/deleted` });
+            onClose();
+            return;
+          }
           notifications.show({ color: "blue", message: `${id} already exists — opening` });
           onCreated(id);
           onClose();

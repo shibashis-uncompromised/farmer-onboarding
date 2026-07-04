@@ -24,6 +24,7 @@ import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
+import { softDeleteFarmer } from "@/lib/softDelete";
 
 function HomeInner() {
   const router = useRouter();
@@ -77,8 +78,8 @@ function HomeInner() {
   const plots = useLiveQuery(async () => (await db.plots.toArray()).filter((x) => !x.deleted), []);
 
   const unsynced = useLiveQuery(async () => {
-    const [f, fm, p] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);
-    return f.filter((x) => !x.synced).length + fm.filter((x) => !x.synced).length + p.filter((x) => !x.synced).length;
+    const [f, fm, p, ss] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray()]);
+    return f.filter((x) => !x.synced).length + fm.filter((x) => !x.synced).length + p.filter((x) => !x.synced).length + ss.filter((x) => !x.synced).length;
   }, []) ?? 0;
 
   const counts = useMemo(() => {
@@ -120,7 +121,7 @@ function HomeInner() {
     else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: "You're offline" });
   };
 
-  // Wipe ALL local data on this device (farmers/farms/plots/photos). The server
+  // Wipe ALL local data on this device (farmers/farms/plots/photos/samples). The server
   // copy is untouched — this only clears IndexedDB on this phone/laptop.
   const CLEAR_PW = "admin123";
   const doClear = async () => {
@@ -130,9 +131,7 @@ function HomeInner() {
     }
     setClearing(true);
     try {
-      await db.transaction("rw", db.farmers, db.farms, db.plots, db.media, async () => {
-        await Promise.all([db.farmers.clear(), db.farms.clear(), db.plots.clear(), db.media.clear()]);
-      });
+      await Promise.all([db.farmers.clear(), db.farms.clear(), db.plots.clear(), db.soilSamples.clear(), db.media.clear()]);
       notifications.show({ color: "green", message: "Local data cleared on this device" });
       setClearOpen(false);
       setClearPw("");
@@ -154,11 +153,22 @@ function HomeInner() {
     }
     setScanOpen(false);
     const existing = await db.farmers.get(code);
-    if (existing) {
+    if (existing?.deleted) {
+      notifications.show({ color: "yellow", message: `${code} is hidden/deleted` });
+    } else if (existing) {
       router.push(`/farmer?id=${code}`);
     } else {
       setScannedCode(code);
       setAddOpen(true);
+    }
+  };
+
+  const deleteFarmer = async (id: string) => {
+    try {
+      await softDeleteFarmer(id);
+      notifications.show({ color: "green", message: `${id} deleted` });
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not delete farmer" });
     }
   };
 
@@ -265,18 +275,23 @@ function HomeInner() {
               const co = [f.coFirstName, f.coLastName].filter(Boolean).join(" ");
               return (
                 <Paper key={f.id} withBorder radius="md" p="sm" shadow="xs">
-                  <UnstyledButton w="100%" onClick={() => router.push(`/farmer?id=${f.id}`)}>
-                    <Group wrap="nowrap" gap="sm">
-                      <StatusIcon status={status} />
-                      <Box style={{ flex: 1, minWidth: 0 }}>
-                        <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
-                        <Text size="sm" c="dimmed" truncate>
-                          {co ? `C/o ${co}` : f.id}
-                        </Text>
-                      </Box>
-                      <CaretRight size={18} color="var(--mantine-color-gray-5)" />
-                    </Group>
-                  </UnstyledButton>
+                  <Group wrap="nowrap" gap="xs">
+                    <UnstyledButton style={{ flex: 1, minWidth: 0 }} onClick={() => router.push(`/farmer?id=${f.id}`)}>
+                      <Group wrap="nowrap" gap="sm">
+                        <StatusIcon status={status} />
+                        <Box style={{ flex: 1, minWidth: 0 }}>
+                          <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
+                          <Text size="sm" c="dimmed" truncate>
+                            {co ? `C/o ${co}` : f.id}
+                          </Text>
+                        </Box>
+                        <CaretRight size={18} color="var(--mantine-color-gray-5)" />
+                      </Group>
+                    </UnstyledButton>
+                    <ActionIcon variant="subtle" color="red" aria-label="Delete farmer" onClick={() => deleteFarmer(f.id)}>
+                      <Trash size={16} />
+                    </ActionIcon>
+                  </Group>
                 </Paper>
               );
             })}
@@ -309,7 +324,7 @@ function HomeInner() {
       <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            This erases all farmers, farms, plots and photos stored <b>on this device</b>.
+            This erases all farmers, farms, plots, soil samples and photos stored <b>on this device</b>.
             The server copy is not affected. Anything not yet synced will be lost.
           </Text>
           <TextInput
