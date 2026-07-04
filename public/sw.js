@@ -1,6 +1,8 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v28";
+const CACHE = "farmer-onboarding-v30";
+const TILE_CACHE = "map-tiles-v1";
+const TILE_HOSTS = ["server.arcgisonline.com"];
 
 // Build-time list of all JS/CSS/font chunks (written by scripts/gen-sw-manifest.mjs).
 try { importScripts("/sw-manifest.js"); } catch (e) {}
@@ -24,7 +26,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== TILE_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -33,6 +35,27 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
+
+  // Satellite map tiles are cross-origin. Cache-first keeps previously viewed
+  // or pre-cached tiles available during slow/no-network farm boundary capture.
+  if (TILE_HOSTS.includes(url.hostname)) {
+    e.respondWith((async () => {
+      const cached = await caches.match(req, { cacheName: TILE_CACHE });
+      if (cached) return cached;
+      try {
+        const res = await fetch(req);
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(TILE_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      } catch {
+        return cached || Response.error();
+      }
+    })());
+    return;
+  }
+
   if (url.origin !== location.origin) return;
 
   // Navigations: CACHE-FIRST (stale-while-revalidate), cached per PATH (ignoring
