@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Box, Button, Card, Group, Image, Paper, SegmentedControl, Select, Stack, Text,
+  ActionIcon, Badge, Box, Button, Card, Center, Group, Image, Loader, Paper, SegmentedControl, Select, Stack, Text,
   TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -24,9 +24,22 @@ import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
+import MapErrorBoundary from "./MapErrorBoundary";
 
-const BoundaryDrawMap = dynamic(() => import("./BoundaryDrawMap"), { ssr: false });
-const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), { ssr: false });
+const MapLoading = ({ height = 320 }: { height?: number }) => (
+  <Box style={{ height, width: "100%", borderRadius: 8, overflow: "hidden" }}>
+    <Center h="100%" bg="gray.1"><Loader color="green" size="sm" /></Center>
+  </Box>
+);
+
+const BoundaryDrawMap = dynamic(() => import("./BoundaryDrawMap"), {
+  ssr: false,
+  loading: () => <MapLoading height={320} />,
+});
+const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), {
+  ssr: false,
+  loading: () => <MapLoading height={180} />,
+});
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
   const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
@@ -308,7 +321,11 @@ function FarmDetailModal(
             <Text size="sm" fw={500} mb={6}>
               <Group gap={6} component="span"><Polygon size={16} /> Boundary · {farm.boundary?.length ?? 0} points</Group>
             </Text>
-            <FarmBoundaryPreview boundary={farm.boundary} markerLat={farm.lat} markerLng={farm.lng} height={180} />
+            <MapErrorBoundary fallback={
+              <Text size="xs" c="dimmed">Map preview unavailable.</Text>
+            }>
+              <FarmBoundaryPreview boundary={farm.boundary} markerLat={farm.lat} markerLng={farm.lng} height={180} />
+            </MapErrorBoundary>
             {farm.boundary && farm.boundary.length > 0 && (
               <Box mah={120} mt="xs" style={{ overflowY: "auto" }}>
                 <Stack gap={4}>
@@ -509,7 +526,9 @@ function BoundaryCapture({
 
       {mode === "map" ? (
         <Stack gap="xs">
-          <BoundaryDrawMap points={points} onChange={onChange} centerHint={centerHint} />
+          <MapErrorBoundary onError={() => setMode("manual")}>
+            <BoundaryDrawMap points={points} onChange={onChange} centerHint={centerHint} />
+          </MapErrorBoundary>
           <Group justify="space-between" gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed">
               {tileProgress?.total ? `${tileProgress.done}/${tileProgress.total} tiles cached` : "Cache nearby tiles before working with weak signal"}
