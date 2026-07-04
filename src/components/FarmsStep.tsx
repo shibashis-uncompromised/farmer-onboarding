@@ -18,6 +18,7 @@ import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
+import { useSession } from "@/providers/SessionGate";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
@@ -71,6 +72,7 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
 }
 
 function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
+  const { syncNow } = useSession();
   const [plotOpen, plotModal] = useDisclosure(false);
   const [scanOpen, scanModal] = useDisclosure(false);
   const [samplesOpen, samplesModal] = useDisclosure(false);
@@ -132,6 +134,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       });
       await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
       notifications.show({ color: "green", message: `Soil sample ${code} added` });
+      syncNow().catch(() => {});
 
       getBestLocation({ targetAccuracy: 10, maxWait: 20000 })
         .then(async (best) => {
@@ -142,6 +145,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
               lat: best.lat, lng: best.lng, accuracy: best.accuracy,
               updatedAt: Date.now(), synced: false,
             });
+            syncNow().catch(() => {});
           }
         })
         .catch(() => {});
@@ -621,6 +625,7 @@ function AddFarmModal(
   { opened, onClose, farmer, editFarm }:
   { opened: boolean; onClose: () => void; farmer?: Farmer; editFarm?: Farm }
 ) {
+  const { syncNow } = useSession();
   const villageCode = editFarm?.villageCode ?? farmer?.villageCode ?? "";
   const farmerId = editFarm?.farmerId ?? farmer?.id ?? "";
 
@@ -686,6 +691,7 @@ function AddFarmModal(
       }
       setPhotoDirty(false);
       onClose();
+      syncNow().catch(() => {});
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not save farm" });
     } finally {
@@ -717,6 +723,7 @@ function AddFarmModal(
 }
 
 function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () => void; farm: Farm }) {
+  const { syncNow } = useSession();
   const [crop, setCrop] = useState("");
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [saving, setSaving] = useState(false);
@@ -735,6 +742,7 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
       notifications.show({ color: "green", message: `Plot ${seq} added` });
       setCrop(""); setLoc(null);
       onClose();
+      syncNow().catch(() => {});
     } finally {
       setSaving(false);
     }

@@ -24,7 +24,7 @@ export default function LoginPage() {
       // Go straight to home — do NOT wait on a sync here, or slow internet would
       // block the login→home transition. SessionGate runs the first sync in the
       // background once home mounts.
-      router.replace("/home");
+      router.replace("/home/");
     } catch (err: any) {
       const offline = typeof navigator !== "undefined" && !navigator.onLine;
       setErr(offline ? "You're offline — first sign-in needs internet." : (err?.message || "Login failed"));

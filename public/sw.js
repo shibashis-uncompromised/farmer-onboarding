@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v34";
+const CACHE = "farmer-onboarding-v35";
 const TILE_CACHE = "map-tiles-v1";
 const TILE_HOSTS = ["server.arcgisonline.com"];
 
@@ -65,20 +65,32 @@ self.addEventListener("fetch", (e) => {
   // the background to refresh the cached shell for next time; the service-worker
   // version bump + auto-reload is what actually ships new app versions.
   if (req.mode === "navigate") {
-    const shellKey = url.origin + url.pathname;          // strip query
+    const pathNoSlash = url.pathname.replace(/\/$/, "") || "/";
+    const pathWithSlash = pathNoSlash === "/" ? "/" : `${pathNoSlash}/`;
+    const shellKeys = [
+      url.origin + pathWithSlash,
+      url.origin + pathNoSlash,
+      pathWithSlash,
+      pathNoSlash,
+      "/home/",
+      "/home",
+      "/",
+    ];
     e.respondWith((async () => {
-      const cached =
-        (await caches.match(shellKey)) ||
-        (await caches.match(url.pathname)) ||
-        (await caches.match("/home/")) ||
-        (await caches.match("/"));
+      let cached = null;
+      for (const key of shellKeys) {
+        cached = await caches.match(key);
+        if (cached) break;
+      }
 
       // Background refresh (don't block the response on the network).
       const fromNetwork = fetch(req)
         .then((res) => {
           if (res.ok && !res.redirected) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(shellKey, copy)).catch(() => {});
+            caches.open(CACHE).then((c) => {
+              c.put(url.origin + pathWithSlash, res.clone()).catch(() => {});
+              c.put(pathWithSlash, res.clone()).catch(() => {});
+            }).catch(() => {});
           }
           return res;
         })

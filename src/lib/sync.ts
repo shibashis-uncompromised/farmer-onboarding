@@ -3,6 +3,14 @@ import { db } from "./db";
 import { apiSync, apiPull, apiPresignMedia, fetchWithTimeout } from "./api";
 import { getSession, ensureIdHeadroom } from "./session";
 
+const SYNC_BATCH_SIZE = 10;
+
+const chunksOf = <T>(rows: T[], size = SYNC_BATCH_SIZE): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < rows.length; i += size) chunks.push(rows.slice(i, i + size));
+  return chunks;
+};
+
 // Merge server records into a local table, last-write-wins by updatedAt.
 // Pulled records are marked synced (they're reconciled with the server).
 async function mergeTable<T extends { id: string; updatedAt?: number }>(
@@ -26,6 +34,7 @@ async function mergeTable<T extends { id: string; updatedAt?: number }>(
 export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   const s = getSession();
   if (!s) throw new Error("Not signed in");
+  const token = s.token;
   if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("You're offline — connect to sync");
 
   // 0) top up the offline ID block while we have connectivity (fire-and-forget)
@@ -38,15 +47,19 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
 
   for (const m of unsyncedMedia) {
     try {
+      if (m.s3Key) {
+        syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: m.blob.type || "image/jpeg", s3Key: m.s3Key });
+        continue;
+      }
       const mimeType = m.blob.type || "image/jpeg";
-      const { uploadUrl, s3Key } = await apiPresignMedia(s.token, m.id, mimeType);
+      const { uploadUrl, s3Key } = await apiPresignMedia(token, m.id, mimeType);
       const put = await fetchWithTimeout(uploadUrl, {
         method: "PUT",
         body: m.blob,
         headers: { "Content-Type": mimeType },
       }, 15000);
       if (!put.ok) throw new Error(`S3 upload failed (${put.status})`);
-      await db.media.update(m.id, { s3Key, synced: true } as any);
+      await db.media.update(m.id, { s3Key } as any);
       syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: mimeType, s3Key });
     } catch (e) {
       console.warn(`Media upload failed for ${m.id}:`, e);
@@ -65,23 +78,45 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   const up = lp.filter((x) => !x.synced);
   const uss = lss.filter((x) => !x.synced);
   let pushed = 0;
-  try {
-    if (uf.length || um.length || up.length || uss.length || syncedMediaPayload.length) {
-      await apiSync(s.token, { farmers: uf, farms: um, plots: up, soilSamples: uss, media: syncedMediaPayload });
-      await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
-        for (const x of uf) await db.farmers.update(x.id, { synced: true } as any);
-        for (const x of um) await db.farms.update(x.id, { synced: true } as any);
-        for (const x of up) await db.plots.update(x.id, { synced: true } as any);
-        for (const x of uss) await db.soilSamples.update(x.id, { synced: true } as any);
-      });
-      pushed = uf.length + um.length + up.length + uss.length;
+
+  async function pushTable<T extends { id: string }>(
+    key: "farmers" | "farms" | "plots" | "soilSamples",
+    table: Table<T, string>,
+    rows: T[]
+  ) {
+    for (const chunk of chunksOf(rows)) {
+      try {
+        await apiSync(token, { [key]: chunk });
+        await db.transaction("rw", table, async () => {
+          for (const x of chunk) await table.update(x.id, { synced: true } as any);
+        });
+        pushed += chunk.length;
+      } catch (e) {
+        console.warn(`Push failed for ${key} batch — will retry next sync:`, e);
+      }
     }
-  } catch (e) {
-    console.warn("Push failed — will retry next sync; continuing to pull:", e);
+  }
+
+  await pushTable("farmers", db.farmers, uf);
+  await pushTable("farms", db.farms, um);
+  await pushTable("plots", db.plots, up);
+  await pushTable("soilSamples", db.soilSamples, uss);
+
+  let mediaPushed = 0;
+  for (const chunk of chunksOf(syncedMediaPayload)) {
+    try {
+      await apiSync(token, { media: chunk });
+      await db.transaction("rw", db.media, async () => {
+        for (const x of chunk) await db.media.update(x.id, { synced: true } as any);
+      });
+      mediaPushed += chunk.length;
+    } catch (e) {
+      console.warn("Media metadata push failed — will retry next sync:", e);
+    }
   }
 
   // 3) pull the full server set + merge (network call OUTSIDE the tx)
-  const server = await apiPull(s.token);
+  const server = await apiPull(token);
   let pulled = 0;
   await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
     pulled += await mergeTable(db.farmers as any, server.farmers as any);
@@ -106,5 +141,5 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     }
   }
 
-  return { pushed: pushed + syncedMediaPayload.length, pulled };
+  return { pushed: pushed + mediaPushed, pulled };
 }

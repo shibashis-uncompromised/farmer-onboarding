@@ -63,7 +63,7 @@ export default function SessionGate({ children }: { children: React.ReactNode })
   useEffect(() => {
     const u = currentUser();
     if (!u) {
-      router.replace("/login");
+      router.replace("/login/");
       return;
     }
     setUser(u);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ActionIcon, Box, Button, Center, Container, Group, Loader, Paper, Stepper, Text, Title,
@@ -19,12 +19,21 @@ function FarmerInner() {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get("id") || "";
-  // Persist the current step in the URL so a refresh on Farms & Plots stays
-  // there instead of bouncing back to Bio Data.
   const [active, setActiveState] = useState(() => (params.get("step") === "1" ? 1 : 0));
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const saved = sessionStorage.getItem(`fo_farmer_step_${id}`);
+      if (saved === "0" || saved === "1") setActiveState(Number(saved));
+      else if (params.get("step") === "1") setActiveState(1);
+    } catch {}
+    // Read URL params only on first load for this farmer. Step changes should
+    // stay local so offline/slow routing cannot block the Bio -> Farms action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const setActive = (step: number) => {
     setActiveState(step);
-    try { router.replace(`/farmer?id=${encodeURIComponent(id)}&step=${step}`, { scroll: false }); } catch {}
+    try { if (id) sessionStorage.setItem(`fo_farmer_step_${id}`, String(step)); } catch {}
   };
 
   const farmer = useLiveQuery(async () => {
@@ -42,7 +51,7 @@ function FarmerInner() {
       <Center h="100dvh" p="lg">
         <Box ta="center">
           <Text fw={600} mb="sm">Farmer not found</Text>
-          <ActionIcon variant="light" onClick={() => router.push("/home")}><ArrowLeft /></ActionIcon>
+          <ActionIcon variant="light" onClick={() => router.push("/home/")}><ArrowLeft /></ActionIcon>
         </Box>
       </Center>
     );
@@ -64,7 +73,7 @@ function FarmerInner() {
         <Container size="sm" pb="md" pt="xs">
           <Group justify="space-between" wrap="nowrap">
             <Group wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
-              <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home")} aria-label="Back">
+              <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home/")} aria-label="Back">
                 <ArrowLeft size={22} />
               </ActionIcon>
               <Box style={{ minWidth: 0 }}>
@@ -108,7 +117,7 @@ function FarmerInner() {
             <Button variant="default" leftSection={<ArrowLeft size={18} />} onClick={() => setActive(0)}>
               Bio Data
             </Button>
-            <Button color="teal" leftSection={<Check size={18} weight="bold" />} onClick={() => router.push("/home")}>
+            <Button color="teal" leftSection={<Check size={18} weight="bold" />} onClick={() => router.push("/home/")}>
               Done
             </Button>
           </Group>

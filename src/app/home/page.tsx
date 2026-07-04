@@ -155,7 +155,7 @@ function HomeInner() {
     if (existing?.deleted) {
       notifications.show({ color: "yellow", message: `${code} is hidden/deleted` });
     } else if (existing) {
-      router.push(`/farmer?id=${code}`);
+      router.push(`/farmer/?id=${encodeURIComponent(code)}`);
     } else {
       setScannedCode(code);
       setAddOpen(true);
@@ -212,7 +212,7 @@ function HomeInner() {
                 <Menu.Item color="red" leftSection={<Trash size={16} />} onClick={() => { setClearPw(""); setClearOpen(true); }}>
                   Clear local data
                 </Menu.Item>
-                <Menu.Item color="red" leftSection={<SignOut size={16} />} onClick={() => { logout(); router.replace("/login"); }}>
+                <Menu.Item color="red" leftSection={<SignOut size={16} />} onClick={() => { logout(); router.replace("/login/"); }}>
                   Sign out
                 </Menu.Item>
               </Menu.Dropdown>
@@ -265,7 +265,7 @@ function HomeInner() {
               const co = [f.coFirstName, f.coLastName].filter(Boolean).join(" ");
               return (
                 <Paper key={f.id} withBorder radius="md" p="sm" shadow="xs">
-                  <UnstyledButton w="100%" onClick={() => router.push(`/farmer?id=${f.id}`)}>
+                  <UnstyledButton w="100%" onClick={() => router.push(`/farmer/?id=${encodeURIComponent(f.id)}`)}>
                     <Group wrap="nowrap" gap="sm">
                       <StatusIcon status={status} />
                       <Box style={{ flex: 1, minWidth: 0 }}>
@@ -303,7 +303,7 @@ function HomeInner() {
       <AddFarmerModal
         opened={addOpen} onClose={() => { setAddOpen(false); setScannedCode(null); }} defaultVillage={village}
         scannedCode={scannedCode}
-        onCreated={(id) => router.push(`/farmer?id=${id}`)}
+        onCreated={(id) => router.push(`/farmer/?id=${encodeURIComponent(id)}`)}
       />
 
       <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data">
