@@ -70,11 +70,11 @@ function HomeInner() {
   }, []);
 
   const farmers = useLiveQuery(
-    () => db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt"),
+    async () => (await db.farmers.where("villageCode").equals(village).reverse().sortBy("updatedAt")).filter((f) => !f.deleted),
     [village]
   );
-  const farms = useLiveQuery(() => db.farms.toArray(), []);
-  const plots = useLiveQuery(() => db.plots.toArray(), []);
+  const farms = useLiveQuery(async () => (await db.farms.toArray()).filter((x) => !x.deleted), []);
+  const plots = useLiveQuery(async () => (await db.plots.toArray()).filter((x) => !x.deleted), []);
 
   const unsynced = useLiveQuery(async () => {
     const [f, fm, p] = await Promise.all([db.farmers.toArray(), db.farms.toArray(), db.plots.toArray()]);

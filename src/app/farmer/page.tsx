@@ -28,8 +28,8 @@ function FarmerInner() {
   };
 
   const farmer = useLiveQuery(() => db.farmers.get(id), [id]);
-  const farmCount = useLiveQuery(() => db.farms.where("farmerId").equals(id).count(), [id]) ?? 0;
-  const plotCount = useLiveQuery(() => db.plots.where("farmerId").equals(id).count(), [id]) ?? 0;
+  const farmCount = useLiveQuery(async () => (await db.farms.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
+  const plotCount = useLiveQuery(async () => (await db.plots.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
 
   if (farmer === undefined) {
     return <Center h="100dvh"><Loader color="green" /></Center>;

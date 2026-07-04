@@ -12,6 +12,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
+import { seedLabel } from "@/lib/seeds";
 import { useBlobUrl } from "@/lib/useBlobUrl";
 import type { Farmer, SeedPackage } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
@@ -128,7 +129,7 @@ export default function BioStep({
             <Group gap={6}>
               {seeds.map((s) => (
                 <Badge key={s.seed} variant="light" color="green" leftSection={<Plant size={12} />}>
-                  {s.seed} ×{s.qty}
+                  {seedLabel(s.seed, s.qty)}
                 </Badge>
               ))}
             </Group>

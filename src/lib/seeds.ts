@@ -14,3 +14,13 @@ export function normalizeSeedName(raw: string): string {
 
 export const seedsTotal = (seeds?: { qty: number }[]) =>
   (seeds || []).reduce((sum, x) => sum + (x.qty || 0), 0);
+
+// Kg per packet, by seed. Packets are handed out as fixed-weight bags.
+export const KG_PER_PACKET: Record<string, number> = { Groundnut: 20 };
+
+// Human label for a seed line, showing packets and their kg weight when known:
+//   Groundnut ×2 (40 kg)   ·   Paddy ×1   (unknown weight → packets only)
+export function seedLabel(seed: string, qty: number): string {
+  const kg = KG_PER_PACKET[seed];
+  return kg ? `${seed} ×${qty} (${qty * kg} kg)` : `${seed} ×${qty}`;
+}

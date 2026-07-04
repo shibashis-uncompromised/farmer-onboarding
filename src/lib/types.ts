@@ -27,6 +27,7 @@ export interface Farmer {
   createdAt: number;
   updatedAt: number;
   synced: boolean;
+  deleted?: boolean;       // soft delete — hidden from all views when true
 }
 
 export interface Farm {
@@ -41,6 +42,7 @@ export interface Farm {
   createdAt: number;
   updatedAt: number;
   synced: boolean;
+  deleted?: boolean;       // soft delete
 }
 
 // A single corner/deviation point of a farm boundary.
@@ -63,6 +65,7 @@ export interface Plot {
   createdAt: number;
   updatedAt: number;
   synced: boolean;
+  deleted?: boolean;       // soft delete
 }
 
 export interface Media {
@@ -84,9 +87,11 @@ export interface SoilSample {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
+  pastCrops?: string;    // previous crops on this plot (for research)
   createdAt: number;     // when scanned
   updatedAt: number;
   synced: boolean;
+  deleted?: boolean;       // soft delete
 }
 
 export interface SessionLocation {

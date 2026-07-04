@@ -17,7 +17,7 @@ import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
-import { looksLikeFarmerCode } from "@/lib/qr";
+import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
@@ -42,8 +42,8 @@ const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), {
 });
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
-  const farms = useLiveQuery(() => db.farms.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
-  const plots = useLiveQuery(() => db.plots.where("farmerId").equals(farmer.id).toArray(), [farmer.id]);
+  const farms = useLiveQuery(async () => (await db.farms.where("farmerId").equals(farmer.id).toArray()).filter((x) => !x.deleted), [farmer.id]);
+  const plots = useLiveQuery(async () => (await db.plots.where("farmerId").equals(farmer.id).toArray()).filter((x) => !x.deleted), [farmer.id]);
   const [farmOpen, farmModal] = useDisclosure(false);
 
   return (
@@ -77,36 +77,47 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [editOpen, editModal] = useDisclosure(false);
   const [detailOpen, detailModal] = useDisclosure(false);
   const [manualOpen, manualModal] = useDisclosure(false);
+  const [cropOpen, cropModal] = useDisclosure(false);
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
   const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
   const url = useBlobUrl(photo?.blob);
   const soilSamples = useLiveQuery(
-    () => db.soilSamples.where("farmId").equals(farm.id).toArray(),
+    async () => (await db.soilSamples.where("farmId").equals(farm.id).toArray()).filter((x) => !x.deleted),
     [farm.id]
   );
 
-  // Scan (or type) a soil-sample code → SAVE IMMEDIATELY with a backup location
-  // (farm coords → last known GPS), then improve the location in the background
-  // when a fresh GPS lock arrives. The save itself never waits on GPS or
-  // network, so adding a sample can never get stuck — even fully offline.
-  const onScanSample = async (raw: string) => {
+  // Step 1 — scan/type a soil-sample code → validate → open the past-crops form.
+  const onScanSample = (raw: string) => {
     const code = (raw || "").trim();
     scanModal.close();
     manualModal.close();
     if (!code) return;
-    // Guard against scanning the wrong QR type by mistake.
     if (looksLikeFarmerCode(code)) {
       notifications.show({ color: "red", message: `${code} is a farmer QR — not a soil sample` });
       return;
     }
-    // Same sample code already recorded for this farm → don't duplicate.
-    const dup = (soilSamples || []).find((s) => s.code === code);
+    if (!looksLikeSoilCode(code)) {
+      notifications.show({ color: "red", message: `Invalid soil code: ${code} (expected e.g. RJ-AMOD-SA001)` });
+      return;
+    }
+    const dup = (soilSamples || []).find((s) => s.code.toUpperCase() === code.toUpperCase());
     if (dup) {
       notifications.show({ color: "blue", message: `Sample ${code} is already added to this farm` });
       return;
     }
+    setPendingCode(code.toUpperCase());
+    cropModal.open();
+  };
+
+  // Step 2 — SAVE IMMEDIATELY with past crops + a backup location (farm coords →
+  // last known GPS), then improve the location in the background when a fresh
+  // fix arrives. Never waits on GPS or network — works fully offline.
+  const saveSample = async (pastCrops: string) => {
+    const code = pendingCode;
+    cropModal.close();
+    setPendingCode(null);
+    if (!code) return;
     try {
-      // Backup location, instantly available: the farm's own coords, else the
-      // device's last known fix. Refined below when live GPS locks.
       const last = getLastLocation();
       const backup = farm.lat != null && farm.lng != null
         ? { lat: farm.lat, lng: farm.lng, accuracy: farm.accuracy ?? null }
@@ -115,13 +126,13 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       const sampleId = uid();
       await db.soilSamples.add({
         id: sampleId, code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
+        pastCrops: pastCrops.trim() || undefined,
         lat: backup?.lat ?? null, lng: backup?.lng ?? null, accuracy: backup?.accuracy ?? null,
         createdAt: now, updatedAt: now, synced: false,
       });
       await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
       notifications.show({ color: "green", message: `Soil sample ${code} added` });
 
-      // Background: replace the backup with a live GPS fix if we get a better one.
       getBestLocation({ targetAccuracy: 10, maxWait: 20000 })
         .then(async (best) => {
           const cur = await db.soilSamples.get(sampleId);
@@ -133,7 +144,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
             });
           }
         })
-        .catch(() => {});   // no GPS → backup location stands
+        .catch(() => {});
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not save soil sample" });
     }
@@ -203,6 +214,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
       <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
+      <SoilCropModal opened={cropOpen} onClose={() => { cropModal.close(); setPendingCode(null); }} code={pendingCode} onSave={saveSample} />
       <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
       <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
@@ -248,6 +260,7 @@ function SoilSamplesModal(
                     ? <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}{s.accuracy != null ? ` (±${Math.round(s.accuracy)}m)` : ""}</Group>
                     : "No location recorded"}
                 </Text>
+                {s.pastCrops && <Text size="xs" c="dimmed"><Group gap={4} component="span"><Plant size={11} /> Past crops: {s.pastCrops}</Group></Text>}
               </Timeline.Item>
             ))}
           </Timeline>
@@ -286,6 +299,36 @@ function ManualSampleModal(
         />
         <Button leftSection={<Flask size={16} />} color="orange" onClick={submit} disabled={!code.trim()}>
           Add sample
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Past crops for a soil sample (research) — shown after a valid code ----
+function SoilCropModal(
+  { opened, onClose, code, onSave }:
+  { opened: boolean; onClose: () => void; code: string | null; onSave: (pastCrops: string) => void }
+) {
+  const [crops, setCrops] = useState("");
+  useEffect(() => { if (opened) setCrops(""); }, [opened]);
+  return (
+    <AppModal opened={opened} onClose={onClose} title="Soil sample — past crops">
+      <Stack gap="md">
+        <Group gap={6}>
+          <ThemeIcon variant="light" color="orange" radius="xl"><Flask size={16} weight="fill" /></ThemeIcon>
+          <Text fw={700}>{code}</Text>
+        </Group>
+        <TextInput
+          label="Past / previous crops"
+          description="What was grown on this plot before (for research). Optional."
+          placeholder="e.g. Wheat, Cotton (last 1–2 seasons)"
+          value={crops} onChange={(e) => setCrops(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSave(crops); } }}
+          data-autofocus
+        />
+        <Button color="orange" leftSection={<Flask size={16} />} onClick={() => onSave(crops)}>
+          Save soil sample
         </Button>
       </Stack>
     </AppModal>
@@ -362,7 +405,7 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {[...samples].sort((a, b) => b.createdAt - a.createdAt).map((s) => (
-                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}</Text>
+                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · past: ${s.pastCrops}` : ""}</Text>
               ))}
             </Stack>
           )}

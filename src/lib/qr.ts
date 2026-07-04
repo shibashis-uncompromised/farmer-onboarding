@@ -47,3 +47,9 @@ export function villageCodeFromId(id: string): string | null {
 export function looksLikeFarmerCode(code: string): boolean {
   return /^[A-Z]{2,}-[A-Z0-9]+-[UF]\d+$/i.test((code || "").trim());
 }
+
+// Soil-sample codes look like RJ-AMOD-SA001 / RJ-VELA-SB034:
+//   <REGION>-<VILLAGE>-S<letter><digits>
+export function looksLikeSoilCode(code: string): boolean {
+  return /^[A-Z]{2,}-[A-Z0-9]+-S[A-Z]\d+$/i.test((code || "").trim());
+}

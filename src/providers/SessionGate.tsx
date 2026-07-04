@@ -6,6 +6,7 @@ import { Center, Loader } from "@mantine/core";
 import { currentUser, type AuthUser } from "@/lib/auth";
 import { getCurrentLocation, saveLastLocation, getLastLocation } from "@/lib/location";
 import { syncAll } from "@/lib/sync";
+import { sweepPreLaunch } from "@/lib/softDelete";
 import type { SessionLocation } from "@/lib/types";
 
 export type SyncState = "idle" | "syncing" | "offline" | "error";
@@ -68,6 +69,8 @@ export default function SessionGate({ children }: { children: React.ReactNode })
     setUser(u);
     setChecked(true);
     getCurrentLocation().then((l) => { saveLastLocation(l); setLoc(l); }).catch(() => {});
+    // Hide pre-launch test data (idempotent). Runs locally; the deletions sync.
+    sweepPreLaunch().catch(() => {});
   }, [router]);
 
   // Auto-sync every 10s while signed in + visible. Safe: guarded against

@@ -2,10 +2,10 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { db } from "./db";
 import { villageByCode } from "./villages";
-import { seedsTotal } from "./seeds";
+import { seedsTotal, seedLabel } from "./seeds";
 
 const seedsText = (seeds?: { seed: string; qty: number }[]) =>
-  (seeds || []).map((s) => `${s.seed} x${s.qty}`).join("; ");
+  (seeds || []).map((s) => seedLabel(s.seed, s.qty)).join("; ");
 
 const cell = (v: unknown) => {
   const s = v == null ? "" : String(v);
@@ -18,13 +18,18 @@ const fmtTs = (n: number) => new Date(n).toISOString();
 
 // Build a ZIP: farmers.csv, farms.csv, plots.csv + photos named by ID.
 export async function exportAllZip(): Promise<{ farmers: number }> {
-  const [farmers, farms, plots, media, soilSamples] = await Promise.all([
+  const [farmersAll, farmsAll, plotsAll, media, soilSamplesAll] = await Promise.all([
     db.farmers.toArray(),
     db.farms.toArray(),
     db.plots.toArray(),
     db.media.toArray(),
     db.soilSamples.toArray(),
   ]);
+  // Exclude soft-deleted records from exports.
+  const farmers = farmersAll.filter((x) => !x.deleted);
+  const farms = farmsAll.filter((x) => !x.deleted);
+  const plots = plotsAll.filter((x) => !x.deleted);
+  const soilSamples = soilSamplesAll.filter((x) => !x.deleted);
   const mediaMap = new Map(media.map((m) => [m.id, m.blob]));
   const zip = new JSZip();
 
@@ -81,11 +86,11 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "soil-samples.csv",
     toCSV(
-      ["Sample Code","Farm ID","Farmer ID","Village","Latitude","Longitude","Accuracy (m)","Collected At"],
+      ["Sample Code","Farm ID","Farmer ID","Village","Past Crops","Latitude","Longitude","Accuracy (m)","Collected At"],
       soilSamples.map((s) => {
         const v = villageByCode(s.villageCode);
         return [
-          s.code, s.farmId, s.farmerId, v?.name || s.villageCode,
+          s.code, s.farmId, s.farmerId, v?.name || s.villageCode, s.pastCrops || "",
           s.lat ?? "", s.lng ?? "", s.accuracy ?? "", fmtTs(s.createdAt),
         ];
       })
