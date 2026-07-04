@@ -648,12 +648,21 @@ function AddFarmModal(
   return (
     <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.id}` : "Add farm"}>
       <Stack gap="md">
+        {/* Save stays pinned at the top so the map (Draw mode) never buries it. */}
+        <Box
+          style={{
+            position: "sticky", top: 0, zIndex: 5,
+            background: "var(--mantine-color-body)",
+            paddingBottom: 8,
+          }}
+        >
+          <Button fullWidth size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
+            {editFarm ? "Update farm" : "Save farm"}
+          </Button>
+        </Box>
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
         <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
-        <Button size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
-          {editFarm ? "Update farm" : "Save farm"}
-        </Button>
       </Stack>
     </AppModal>
   );
