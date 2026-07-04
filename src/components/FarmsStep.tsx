@@ -18,7 +18,6 @@ import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
-import { softDeleteFarm, softDeletePlot, softDeleteSoilSample } from "@/lib/softDelete";
 import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
@@ -86,33 +85,6 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
     async () => (await db.soilSamples.where("farmId").equals(farm.id).toArray()).filter((x) => !x.deleted),
     [farm.id]
   );
-
-  const deleteFarm = async () => {
-    try {
-      await softDeleteFarm(farm.id);
-      notifications.show({ color: "green", message: `${farm.id} deleted` });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not delete farm" });
-    }
-  };
-
-  const deletePlot = async (id: string) => {
-    try {
-      await softDeletePlot(id);
-      notifications.show({ color: "green", message: `${id} deleted` });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not delete plot" });
-    }
-  };
-
-  const deleteSoilSample = async (id: string, code: string) => {
-    try {
-      await softDeleteSoilSample(id);
-      notifications.show({ color: "green", message: `${code} deleted` });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not delete sample" });
-    }
-  };
 
   // Step 1 — scan/type a soil-sample code → validate → open the past-crops form.
   const onScanSample = (raw: string) => {
@@ -187,9 +159,6 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
           <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label="Edit farm">
             <PencilSimple size={15} />
           </ActionIcon>
-          <ActionIcon size="sm" variant="subtle" color="red" onClick={deleteFarm} aria-label="Delete farm">
-            <Trash size={15} />
-          </ActionIcon>
         </Group>
       </Group>
       {/* Tapping the card body opens the farm's detail view */}
@@ -214,7 +183,6 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <Stack gap={6}>
         {plots.map((p) => (
           <Paper key={p.id} withBorder radius="sm" p={8} bg="gray.0">
-            <Group justify="space-between" wrap="nowrap">
               <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                 <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
                 <div style={{ minWidth: 0 }}>
@@ -222,12 +190,8 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
                   <Text size="xs" c="dimmed">Plot {p.seq} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
                 </div>
               </Group>
-              <ActionIcon variant="subtle" color="red" size="sm" onClick={() => deletePlot(p.id)} aria-label="Delete plot">
-                <Trash size={14} />
-              </ActionIcon>
-            </Group>
-          </Paper>
-        ))}
+            </Paper>
+          ))}
       </Stack>
 
       <Group mt="sm" gap={6} grow wrap="nowrap">
@@ -249,7 +213,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
       <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
       <SoilCropModal opened={cropOpen} onClose={() => { cropModal.close(); setPendingCode(null); }} code={pendingCode} onSave={saveSample} />
-      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} onDelete={deleteSoilSample} />
+      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
       <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
     </Card>
@@ -258,7 +222,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
 
 // ---- Timeline of soil samples taken from a farm ----
 function SoilSamplesModal(
-  { opened, onClose, farm, samples, onScanMore, onManual, onDelete }:
+  { opened, onClose, farm, samples, onScanMore, onManual }:
   {
     opened: boolean;
     onClose: () => void;
@@ -266,7 +230,6 @@ function SoilSamplesModal(
     samples: SoilSample[];
     onScanMore: () => void;
     onManual: () => void;
-    onDelete: (id: string, code: string) => void;
   }
 ) {
   const sorted = [...samples].sort((a, b) => b.createdAt - a.createdAt);
@@ -294,17 +257,8 @@ function SoilSamplesModal(
           <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
             {sorted.map((s) => (
               <Timeline.Item key={s.id} bullet={<Flask size={13} weight="fill" />}
-                title={
-                  <Group justify="space-between" gap="xs" wrap="nowrap">
-                    <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                      <Text fw={700} size="sm" truncate>{s.code}</Text>
-                      {!s.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}
-                    </Group>
-                    <ActionIcon variant="subtle" color="red" size="sm" onClick={() => onDelete(s.id, s.code)} aria-label="Delete sample">
-                      <Trash size={14} />
-                    </ActionIcon>
-                  </Group>
-                }>
+                title={<Group gap={6}><Text fw={700} size="sm">{s.code}</Text>
+                  {!s.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}</Group>}>
                 <Text size="xs" c="dimmed">{dayLabel(s.createdAt)} · {fmtWhen(s.createdAt)}</Text>
                 <Text size="xs" c="dimmed">
                   {s.lat != null && s.lng != null

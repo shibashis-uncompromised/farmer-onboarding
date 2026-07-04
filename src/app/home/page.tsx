@@ -24,7 +24,6 @@ import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
-import { softDeleteFarmer } from "@/lib/softDelete";
 
 function HomeInner() {
   const router = useRouter();
@@ -163,15 +162,6 @@ function HomeInner() {
     }
   };
 
-  const deleteFarmer = async (id: string) => {
-    try {
-      await softDeleteFarmer(id);
-      notifications.show({ color: "green", message: `${id} deleted` });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not delete farmer" });
-    }
-  };
-
   return (
     <Box mih="100dvh" style={{ background: "var(--mantine-color-gray-0)" }}>
       {/* Header */}
@@ -275,23 +265,18 @@ function HomeInner() {
               const co = [f.coFirstName, f.coLastName].filter(Boolean).join(" ");
               return (
                 <Paper key={f.id} withBorder radius="md" p="sm" shadow="xs">
-                  <Group wrap="nowrap" gap="xs">
-                    <UnstyledButton style={{ flex: 1, minWidth: 0 }} onClick={() => router.push(`/farmer?id=${f.id}`)}>
-                      <Group wrap="nowrap" gap="sm">
-                        <StatusIcon status={status} />
-                        <Box style={{ flex: 1, minWidth: 0 }}>
-                          <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
-                          <Text size="sm" c="dimmed" truncate>
-                            {co ? `C/o ${co}` : f.id}
-                          </Text>
-                        </Box>
-                        <CaretRight size={18} color="var(--mantine-color-gray-5)" />
-                      </Group>
-                    </UnstyledButton>
-                    <ActionIcon variant="subtle" color="red" aria-label="Delete farmer" onClick={() => deleteFarmer(f.id)}>
-                      <Trash size={16} />
-                    </ActionIcon>
-                  </Group>
+                  <UnstyledButton w="100%" onClick={() => router.push(`/farmer?id=${f.id}`)}>
+                    <Group wrap="nowrap" gap="sm">
+                      <StatusIcon status={status} />
+                      <Box style={{ flex: 1, minWidth: 0 }}>
+                        <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
+                        <Text size="sm" c="dimmed" truncate>
+                          {co ? `C/o ${co}` : f.id}
+                        </Text>
+                      </Box>
+                      <CaretRight size={18} color="var(--mantine-color-gray-5)" />
+                    </Group>
+                  </UnstyledButton>
                 </Paper>
               );
             })}
