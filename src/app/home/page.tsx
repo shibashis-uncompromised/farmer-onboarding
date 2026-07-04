@@ -9,7 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode, Trash,CloudArrowDown,
+  QrCode, Trash, CloudArrowDown, ShieldCheck,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -28,7 +28,8 @@ import { logout } from "@/lib/auth";
 function HomeInner() {
   const router = useRouter();
   const [offlineMapsOpen, setOfflineMapsOpen] = useState(false);
-  const { user, location, syncState, syncNow } = useSession();
+  // CHANGED: also pull isAdmin out of useSession() (added in Step 3).
+  const { user, isAdmin, location, syncState, syncNow } = useSession();
   // Villages this user may see (RJ users see RJ villages, mpfield sees MP).
   const villages = useMemo(() => villagesForUser(user.username), [user.username]);
   // Persist the selected village so it survives navigation/reload (and offline).
@@ -214,6 +215,16 @@ function HomeInner() {
                   <Menu.Item leftSection={<CloudArrowDown size={16} />} onClick={() => setOfflineMapsOpen(true)}>
                     Offline maps
                   </Menu.Item>
+                {/* NEW: only rendered for admins. Placeholder page for now (Step 4) —
+                    real admin functionality comes in later steps. */}
+                {isAdmin && (
+                  <>
+                    <Menu.Divider />
+                    <Menu.Item leftSection={<ShieldCheck size={16} />} onClick={() => router.push("/admin")}>
+                      Admin
+                    </Menu.Item>
+                  </>
+                )}
                 <Menu.Divider />
                 <Menu.Item color="red" leftSection={<Trash size={16} />} onClick={() => { setClearPw(""); setClearOpen(true); }}>
                   Clear local data

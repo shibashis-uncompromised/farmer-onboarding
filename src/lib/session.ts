@@ -1,9 +1,12 @@
 import { apiAllocate } from "./api";
 
 export interface Block { start: number; end: number; }
+export type Role = "user" | "admin";
+
 export interface Session {
   token: string;
   username: string;
+  role: Role;           // NEW
   blockSize: number;
   blocks: Block[];
   used: number;        // how many IDs consumed from the blocks (persisted locally)
@@ -12,7 +15,13 @@ export interface Session {
 const KEY = "fo_session_v1";
 
 export function getSession(): Session | null {
-  try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch { return null; }
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || "null");
+    // Back-compat: a session saved before this field existed just won't have
+    // it — treat that as a plain "user" instead of leaving it undefined.
+    if (s && !s.role) s.role = "user";
+    return s;
+  } catch { return null; }
 }
 export function setSession(s: Session) { localStorage.setItem(KEY, JSON.stringify(s)); }
 export function clearSession() { localStorage.removeItem(KEY); }

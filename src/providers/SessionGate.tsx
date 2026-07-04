@@ -6,12 +6,15 @@ import { Center, Loader } from "@mantine/core";
 import { currentUser, type AuthUser } from "@/lib/auth";
 import { getCurrentLocation, saveLastLocation, getLastLocation } from "@/lib/location";
 import { syncAll } from "@/lib/sync";
+import { getSession } from "@/lib/session";
+import { refreshVillages } from "@/lib/villages";
 import type { SessionLocation } from "@/lib/types";
 
 export type SyncState = "idle" | "syncing" | "offline" | "error";
 
 interface SessionCtx {
   user: AuthUser;
+  isAdmin: boolean;
   location: SessionLocation | null;          // best-effort; may be null (captured on demand)
   refreshLocation: () => Promise<SessionLocation>;
   syncState: SyncState;
@@ -68,6 +71,10 @@ export default function SessionGate({ children }: { children: React.ReactNode })
     setUser(u);
     setChecked(true);
     getCurrentLocation().then((l) => { saveLastLocation(l); setLoc(l); }).catch(() => {});
+    // NEW: refresh the villages cache once per app load. Silent/best-effort —
+    // see lib/villages.ts. Does nothing visible; just keeps the cache warm.
+    const s = getSession();
+    if (s) refreshVillages(s.token).catch(() => {});
   }, [router]);
 
   // Auto-sync every 10s while signed in + visible. Safe: guarded against
@@ -90,7 +97,7 @@ export default function SessionGate({ children }: { children: React.ReactNode })
   }
 
   return (
-    <Ctx.Provider value={{ user, location: loc, refreshLocation, syncState, syncNow }}>
+    <Ctx.Provider value={{ user, isAdmin: user.role === "admin", location: loc, refreshLocation, syncState, syncNow }}>
       {children}
     </Ctx.Provider>
   );

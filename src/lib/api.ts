@@ -58,3 +58,45 @@ export const apiPresignMedia = (
   mimeType: string
 ): Promise<{ uploadUrl: string; s3Key: string }> =>
   req("/api/media/presign", { method: "POST", body: JSON.stringify({ token, mediaId, mimeType }) });
+
+export type AdminTable = "farmers" | "farms" | "plots" | "soilSamples" | "media";
+
+export interface AdminRow {
+  id: string;
+  username: string;
+  data?: any;
+  mime_type?: string;
+  s3_key?: string;
+  created_at?: number;
+  is_active: boolean;
+  synced_at: string;
+}
+
+export const apiAdminListTable = (token: string, table: AdminTable): Promise<AdminRow[]> =>
+  req(`/api/admin/${table}?token=${encodeURIComponent(token)}`, { method: "GET" });
+
+export const apiAdminSetActive = (
+  token: string,
+  table: AdminTable,
+  id: string,
+  isActive: boolean
+): Promise<{ id: string; is_active: boolean }> =>
+  req(`/api/admin/${table}/${encodeURIComponent(id)}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ token, isActive }),
+  });
+
+// ---- NEW: Villages (matches the /api/villages route from Step 7, which
+// you already verified with curl) ----
+export interface ServerVillage {
+  code: string;
+  name: string;
+  block: string;
+  idCode: string;
+  region: string;
+}
+
+// GET requests can't carry a body in the browser fetch API, so the token
+// rides as a query param — same reasoning as the admin routes above.
+export const apiVillages = (token: string): Promise<ServerVillage[]> =>
+  req(`/api/villages?token=${encodeURIComponent(token)}`, { method: "GET" });
