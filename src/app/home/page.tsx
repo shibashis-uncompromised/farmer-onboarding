@@ -130,10 +130,17 @@ function HomeInner() {
     }
     setClearing(true);
     try {
-      await Promise.all([db.farmers.clear(), db.farms.clear(), db.plots.clear(), db.soilSamples.clear(), db.media.clear()]);
+      await db.delete();
+      try {
+        localStorage.removeItem("fo_selected_village");
+        Object.keys(sessionStorage)
+          .filter((key) => key.startsWith("fo_farmer_step_"))
+          .forEach((key) => sessionStorage.removeItem(key));
+      } catch {}
       notifications.show({ color: "green", message: "Local data cleared on this device" });
       setClearOpen(false);
       setClearPw("");
+      setTimeout(() => window.location.reload(), 250);
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not clear data" });
     } finally {

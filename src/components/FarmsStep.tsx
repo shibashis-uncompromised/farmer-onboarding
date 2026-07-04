@@ -89,7 +89,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   );
 
   // Step 1 — scan/type a soil-sample code → validate → open the past-crops form.
-  const onScanSample = (raw: string) => {
+  const onScanSample = async (raw: string) => {
     const code = (raw || "").trim();
     scanModal.close();
     manualModal.close();
@@ -102,9 +102,10 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       notifications.show({ color: "red", message: `Invalid soil code: ${code} (expected e.g. RJ-AMOD-SA001)` });
       return;
     }
-    const dup = (soilSamples || []).find((s) => s.code.toUpperCase() === code.toUpperCase());
+    const allSamples = await db.soilSamples.toArray();
+    const dup = allSamples.find((s) => !s.deleted && s.code.toUpperCase() === code.toUpperCase());
     if (dup) {
-      notifications.show({ color: "blue", message: `Sample ${code} is already added to this farm` });
+      notifications.show({ color: "blue", message: `Sample ${code} is already added` });
       return;
     }
     setPendingCode(code.toUpperCase());
