@@ -16,14 +16,17 @@ interface Props {
 // Decodes ~20×/sec on an 800px frame for a fast lock without pegging the CPU.
 const SCAN_INTERVAL = 50;
 const SCAN_MAX_DIM = 800;
+const INVERTED_SCAN_EVERY = 6;
 
 export default function QrScanner({ opened, onClose, onScan, onManual }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const scanningRef = useRef(false);
   const lastDecodeRef = useRef(0);
+  const canvasSizeRef = useRef({ w: 0, h: 0 });
   const frameRef = useRef(0);
   const firedRef = useRef(false);
   const [hint, setHint] = useState("Point the camera at the QR code");
@@ -68,6 +71,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
       setTorchOn(false);
       scanningRef.current = true;
       lastDecodeRef.current = 0;
+      frameRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
     } catch (e) {
       console.warn("Camera error:", e);
@@ -96,6 +100,8 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
     if (s) { s.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
     const video = videoRef.current;
     if (video) { try { video.srcObject = null; } catch {} }
+    ctxRef.current = null;
+    canvasSizeRef.current = { w: 0, h: 0 };
   }
 
   function tick(ts: number) {
@@ -108,14 +114,20 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
       if (vw && vh) {
         const scale = Math.min(1, SCAN_MAX_DIM / Math.max(vw, vh));
         const w = Math.round(vw * scale), h = Math.round(vh * scale);
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (canvasSizeRef.current.w !== w || canvasSizeRef.current.h !== h) {
+          canvas.width = w; canvas.height = h;
+          canvasSizeRef.current = { w, h };
+          ctxRef.current = null;
+        }
+        const ctx = ctxRef.current || canvas.getContext("2d", { willReadFrequently: true });
+        ctxRef.current = ctx;
         if (ctx) {
           ctx.drawImage(video, 0, 0, w, h);
-          // Alternate inversion mode between frames: normal (black-on-white)
-          // decodes stay fast, and inverted / low-contrast prints still lock
-          // within a frame or two.
-          const invert = (frameRef.current++ % 2 === 0) ? "dontInvert" : "attemptBoth";
+          // Normal printed QR codes are black-on-white, so scan those on every
+          // pass. Keep a periodic inverted fallback for unusual labels without
+          // making every decode pay the expensive double-pass cost.
+          const frame = frameRef.current++;
+          const invert = (frame > 0 && frame % INVERTED_SCAN_EVERY === 0) ? "attemptBoth" : "dontInvert";
           const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: invert as any });
           if (code && code.data) { fire(code.data.trim()); return; }
         }
