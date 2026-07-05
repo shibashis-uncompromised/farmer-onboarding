@@ -9,7 +9,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import {
   Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
-  Flask, ClockCounterClockwise, PencilSimple,
+  Flask, ClockCounterClockwise, PencilSimple, CalendarBlank,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -192,7 +192,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
                 <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
-                  <Text size="xs" c="dimmed">Plot {p.seq} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+                  <Text size="xs" c="dimmed">Plot {p.seq}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
                 </div>
               </Group>
             </Paper>
@@ -403,7 +403,7 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {plots.map((p) => (
-                <Text key={p.id} size="xs" c="dimmed">Plot {p.seq} · {p.crop || "—"} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+                <Text key={p.id} size="xs" c="dimmed">Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
               ))}
             </Stack>
           )}
@@ -726,11 +726,20 @@ function AddFarmModal(
   );
 }
 
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () => void; farm: Farm }) {
   const { syncNow } = useSession();
   const [crop, setCrop] = useState("");
+  const [sowingDate, setSowingDate] = useState(todayISO());
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Reset the fields each time the modal opens (default sowing date = today).
+  useEffect(() => { if (opened) { setCrop(""); setSowingDate(todayISO()); setLoc(null); } }, [opened]);
 
   const save = async () => {
     setSaving(true);
@@ -739,6 +748,7 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
       const now = Date.now();
       await db.plots.add({
         id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
+        sowingDate: sowingDate || undefined,
         lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
         createdAt: now, updatedAt: now, synced: false,
       });
@@ -759,6 +769,12 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
         <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
           onChange={(v) => setCrop(v || "")} leftSection={<Plant size={16} />}
           checkIconPosition="right" searchable data-autofocus />
+        <TextInput
+          type="date" label="Sowing date" value={sowingDate}
+          max={todayISO()}
+          onChange={(e) => setSowingDate(e.currentTarget.value)}
+          leftSection={<CalendarBlank size={16} />}
+        />
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
       </Stack>
     </AppModal>

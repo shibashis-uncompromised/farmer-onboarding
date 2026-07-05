@@ -62,6 +62,7 @@ export interface Plot {
   lng: number | null;
   accuracy: number | null;
   crop: string;
+  sowingDate?: string;     // when the crop was sown (YYYY-MM-DD)
   createdAt: number;
   updatedAt: number;
   synced: boolean;

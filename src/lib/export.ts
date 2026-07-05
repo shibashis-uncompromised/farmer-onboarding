@@ -100,9 +100,9 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "plots.csv",
     toCSV(
-      ["Plot ID", "Farm ID", ...FARMER_HEADERS, "Plot No", "Crop", "Latitude", "Longitude", "Accuracy (m)", "Created"],
+      ["Plot ID", "Farm ID", ...FARMER_HEADERS, "Plot No", "Crop", "Sowing Date", "Latitude", "Longitude", "Accuracy (m)", "Created"],
       plots.map((p) => [
-        p.id, p.farmId, ...farmerValues(farmerById.get(p.farmerId)), p.seq, p.crop, p.lat ?? "", p.lng ?? "",
+        p.id, p.farmId, ...farmerValues(farmerById.get(p.farmerId)), p.seq, p.crop, p.sowingDate || "", p.lat ?? "", p.lng ?? "",
         p.accuracy ?? "", fmtTs(p.createdAt),
       ])
     )
