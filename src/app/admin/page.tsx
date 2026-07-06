@@ -59,6 +59,10 @@ function AdminInner() {
   }, [isAdmin, router]);
 
   const load = async () => {
+    // FIX: bail out immediately for non-admins instead of calling the admin
+    // API and getting a 403 — this is what was spamming "Admin access
+    // required" toasts before the redirect above finished.
+    if (!isAdmin) return;
     const s = getSession();
     if (!s) return;
     setRows(null);
@@ -71,7 +75,7 @@ function AdminInner() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [table]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [table, isAdmin]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -83,6 +87,8 @@ function AdminInner() {
   }, [rows, search, table]);
 
   const toggleActive = async (row: AdminRow) => {
+    // FIX: same guard as load() above.
+    if (!isAdmin) return;
     const s = getSession();
     if (!s) return;
     const next = !row.is_active;
