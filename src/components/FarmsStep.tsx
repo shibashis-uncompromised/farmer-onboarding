@@ -19,7 +19,8 @@ import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
 import { useSession } from "@/providers/SessionGate";
-import type { Farmer, Farm, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
+import type { Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
+import { softDeletePlot } from "@/lib/softDelete";
 import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
 import { useBlobUrl } from "@/lib/useBlobUrl";
 import PhotoInput from "./PhotoInput";
@@ -74,6 +75,7 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
 function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const { syncNow } = useSession();
   const [plotOpen, plotModal] = useDisclosure(false);
+  const [editPlot, setEditPlot] = useState<Plot | null>(null);
   const [scanOpen, scanModal] = useDisclosure(false);
   const [samplesOpen, samplesModal] = useDisclosure(false);
   const [editOpen, editModal] = useDisclosure(false);
@@ -188,14 +190,17 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <Stack gap={6}>
         {plots.map((p) => (
           <Paper key={p.id} withBorder radius="sm" p={8} bg="gray.0">
+            <UnstyledButton w="100%" onClick={() => setEditPlot(p)} aria-label={`Edit plot ${p.seq}`}>
               <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                 <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
                   <Text size="xs" c="dimmed">Plot {p.seq}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
                 </div>
+                <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
               </Group>
-            </Paper>
+            </UnstyledButton>
+          </Paper>
           ))}
       </Stack>
 
@@ -215,6 +220,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       </Group>
 
       <AddPlotModal opened={plotOpen} onClose={plotModal.close} farm={farm} />
+      <AddPlotModal opened={!!editPlot} onClose={() => setEditPlot(null)} farm={farm} editPlot={editPlot} />
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
       <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
       <SoilCropModal opened={cropOpen} onClose={() => { cropModal.close(); setPendingCode(null); }} code={pendingCode} onSave={saveSample} />
@@ -731,30 +737,55 @@ const todayISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () => void; farm: Farm }) {
+// Add OR edit a plot. Pass `editPlot` to edit an existing one (prefilled + delete).
+function AddPlotModal(
+  { opened, onClose, farm, editPlot }:
+  { opened: boolean; onClose: () => void; farm: Farm; editPlot?: Plot | null }
+) {
   const { syncNow } = useSession();
   const [crop, setCrop] = useState("");
   const [sowingDate, setSowingDate] = useState(todayISO());
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // Reset the fields each time the modal opens (default sowing date = today).
-  useEffect(() => { if (opened) { setCrop(""); setSowingDate(todayISO()); setLoc(null); } }, [opened]);
+  // Prefill (edit) or reset (add) each time the modal opens.
+  useEffect(() => {
+    if (!opened) return;
+    if (editPlot) {
+      setCrop(editPlot.crop || "");
+      setSowingDate(editPlot.sowingDate || todayISO());
+      setLoc(editPlot.lat != null && editPlot.lng != null
+        ? { lat: editPlot.lat, lng: editPlot.lng, accuracy: editPlot.accuracy ?? 0, at: editPlot.updatedAt }
+        : null);
+    } else {
+      setCrop(""); setSowingDate(todayISO()); setLoc(null);
+    }
+  }, [opened, editPlot]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const { id, seq } = await nextPlotId(farm.id);
       const now = Date.now();
-      await db.plots.add({
-        id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
-        sowingDate: sowingDate || undefined,
-        lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-        createdAt: now, updatedAt: now, synced: false,
-      });
-      await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
-      notifications.show({ color: "green", message: `Plot ${seq} added` });
-      setCrop(""); setLoc(null);
+      if (editPlot) {
+        await db.plots.update(editPlot.id, {
+          crop: crop.trim(), sowingDate: sowingDate || undefined,
+          lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          updatedAt: now, synced: false,
+        });
+        await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
+        notifications.show({ color: "green", message: `Plot ${editPlot.seq} updated` });
+      } else {
+        const { id, seq } = await nextPlotId(farm.id);
+        await db.plots.add({
+          id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
+          sowingDate: sowingDate || undefined,
+          lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          createdAt: now, updatedAt: now, synced: false,
+        });
+        await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
+        notifications.show({ color: "green", message: `Plot ${seq} added` });
+      }
       onClose();
       syncNow().catch(() => {});
     } finally {
@@ -762,20 +793,40 @@ function AddPlotModal({ opened, onClose, farm }: { opened: boolean; onClose: () 
     }
   };
 
+  const remove = async () => {
+    if (!editPlot) return;
+    setDeleting(true);
+    try {
+      await softDeletePlot(editPlot.id);
+      notifications.show({ color: "green", message: `Plot ${editPlot.seq} removed` });
+      onClose();
+      syncNow().catch(() => {});
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
-    <AppModal opened={opened} onClose={onClose} title={`Add plot to ${farm.id}`}>
+    <AppModal opened={opened} onClose={onClose} title={editPlot ? `Edit plot ${editPlot.seq}` : `Add plot to ${farm.id}`}>
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
         <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
           onChange={(v) => setCrop(v || "")} leftSection={<Plant size={16} />}
-          checkIconPosition="right" searchable data-autofocus />
+          checkIconPosition="right" comboboxProps={{ withinPortal: true }} />
         <TextInput
           type="date" label="Sowing date" value={sowingDate}
           max={todayISO()}
           onChange={(e) => setSowingDate(e.currentTarget.value)}
           leftSection={<CalendarBlank size={16} />}
         />
-        <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>Save plot</Button>
+        <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>
+          {editPlot ? "Update plot" : "Save plot"}
+        </Button>
+        {editPlot && (
+          <Button size="sm" variant="subtle" color="red" leftSection={<Trash size={16} />} onClick={remove} loading={deleting}>
+            Remove plot
+          </Button>
+        )}
       </Stack>
     </AppModal>
   );
