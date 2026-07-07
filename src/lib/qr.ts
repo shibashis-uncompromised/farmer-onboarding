@@ -49,10 +49,10 @@ export function looksLikeFarmerCode(code: string): boolean {
 }
 
 export function isReservedImportedFarmerCode(code: string): boolean {
-  const m = /^RJ-(AMOD|VELA|FTHP)-U(\d{3})$/i.exec((code || "").trim());
+  const m = /^RJ-(AMOD|VELA|FTHP|UDAI|BELU)-U(\d{3})$/i.exec((code || "").trim());
   if (!m) return false;
   const seq = Number(m[2]);
-  const maxByVillage: Record<string, number> = { AMOD: 22, VELA: 19, FTHP: 16 };
+  const maxByVillage: Record<string, number> = { AMOD: 22, VELA: 19, FTHP: 16, UDAI: 21, BELU: 10 };
   return seq >= 1 && seq <= (maxByVillage[m[1].toUpperCase()] || 0);
 }
 
