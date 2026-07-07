@@ -22,7 +22,7 @@ import { useSession } from "@/providers/SessionGate";
 import type { Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
 import { softDeletePlot } from "@/lib/softDelete";
 import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
-import { useBlobUrl } from "@/lib/useBlobUrl";
+import { useMediaUrl } from "@/lib/useMediaUrl";
 import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
@@ -83,8 +83,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [manualOpen, manualModal] = useDisclosure(false);
   const [cropOpen, cropModal] = useDisclosure(false);
   const [pendingCode, setPendingCode] = useState<string | null>(null);
-  const photo = useLiveQuery(() => (farm.photoId ? db.media.get(farm.photoId) : undefined), [farm.photoId]);
-  const url = useBlobUrl(photo?.blob);
+  const url = useMediaUrl(farm.photoId);
   const soilSamples = useLiveQuery(
     async () => (await db.soilSamples.where("farmId").equals(farm.id).toArray()).filter((x) => !x.deleted),
     [farm.id]

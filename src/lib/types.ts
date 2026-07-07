@@ -71,10 +71,12 @@ export interface Plot {
 
 export interface Media {
   id: string;            // uuid-ish
-  blob: Blob;
+  blob?: Blob;           // the actual image — absent on field devices (fetched lazily on view)
   createdAt: number;
   synced?: boolean;
   s3Key?: string;        // set after successful S3 upload
+  s3Url?: string;        // presigned GET URL (from pull) for lazy fetch-on-view
+  s3UrlAt?: number;      // when s3Url was issued (presigned URLs expire ~1h)
 }
 
 // A soil sample collected from a farm — the code comes from a scanned QR, and

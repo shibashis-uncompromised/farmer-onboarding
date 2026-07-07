@@ -55,7 +55,8 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   const farmById = new Map(farms.map((f) => [f.id, f]));
   const plots = plotsAll.filter((x) => !x.deleted && farmerById.has(x.farmerId) && farmById.has(x.farmId));
   const soilSamples = soilSamplesAll.filter((x) => !x.deleted && farmerById.has(x.farmerId) && farmById.has(x.farmId));
-  const mediaMap = new Map(media.map((m) => [m.id, m.blob]));
+  // Only records with an actual blob (metadata-only entries on non-admin devices are skipped).
+  const mediaMap = new Map(media.filter((m) => m.blob).map((m) => [m.id, m.blob!]));
   const zip = new JSZip();
 
   // farmers.csv

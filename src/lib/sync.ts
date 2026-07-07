@@ -47,6 +47,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
 
   for (const m of unsyncedMedia) {
     try {
+      if (!m.blob) continue;   // metadata-only record (not a device-captured photo)
       if (m.s3Key) {
         syncedMediaPayload.push({ id: m.id, createdAt: m.createdAt, type: m.blob.type || "image/jpeg", s3Key: m.s3Key });
         continue;
@@ -125,17 +126,31 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
     pulled += await mergeTable(db.soilSamples as any, server.soilSamples as any);
   });
 
-  // 4) download any media blobs we don't have locally yet
+  // 4) Media blobs. Field devices already hold the photos THEY captured (local),
+  // and rarely need to view others' — so we do NOT bulk-download every backend
+  // image to every phone (that would burn mobile data + storage on slow rural
+  // links and drag out the background sync). Only the admin/export device pulls
+  // the full image set; others store lightweight metadata + a presigned URL so a
+  // photo can be fetched lazily when actually viewed (see useMediaUrl).
+  const isExportDevice = s.username?.toLowerCase() === "admin";
   for (const m of server.media || []) {
-    if (!m?.id || !m?.s3Url) continue;
+    if (!m?.id) continue;
     const existing = await db.media.get(m.id);
-    if (existing?.blob) continue;  // already have the blob
+    if (existing?.blob) continue;  // already have the actual image locally
     try {
-      const res = await fetchWithTimeout(m.s3Url, {}, 15000);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      await db.media.put({ id: m.id, blob, createdAt: m.createdAt, synced: true, s3Key: m.s3Key });
-      pulled++;
+      if (isExportDevice && m.s3Url) {
+        const res = await fetchWithTimeout(m.s3Url, {}, 15000);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        await db.media.put({ id: m.id, blob, createdAt: m.createdAt, synced: true, s3Key: m.s3Key });
+        pulled++;
+      } else if (m.s3Key || m.s3Url) {
+        // Metadata only (no blob) — lets useMediaUrl fetch it on demand.
+        await db.media.put({
+          id: m.id, createdAt: m.createdAt, synced: true, s3Key: m.s3Key,
+          s3Url: m.s3Url, s3UrlAt: m.s3Url ? Date.now() : undefined,
+        } as any);
+      }
     } catch (e) {
       console.warn(`Media download failed for ${m.id}:`, e);
     }

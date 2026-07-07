@@ -13,7 +13,7 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
 import { seedLabel } from "@/lib/seeds";
-import { useBlobUrl } from "@/lib/useBlobUrl";
+import { useMediaUrl } from "@/lib/useMediaUrl";
 import type { Farmer, SeedPackage } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
 import SeedsInput from "./SeedsInput";
@@ -55,7 +55,7 @@ export default function BioStep({
   }, [existingPhoto, photoDirty]);
 
   // Auto-revoked preview URL for the read-only view (no per-render leak).
-  const savedPhotoUrl = useBlobUrl(existingPhoto?.blob);
+  const savedPhotoUrl = useMediaUrl(farmer.photoId);
 
   const canSave = first.trim() && last.trim();
 
