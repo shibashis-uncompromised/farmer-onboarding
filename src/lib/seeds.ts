@@ -1,5 +1,5 @@
 // Seed types a farmer can receive. Edit to change the list.
-export const SEEDS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad"];
+export const SEEDS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric"];
 
 export const SEED_QTY_MAX = 99;
 

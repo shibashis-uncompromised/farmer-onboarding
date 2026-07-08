@@ -1,5 +1,5 @@
 // Crop choices for plots. Edit to change the list.
-export const CROPS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad"];
+export const CROPS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric"];
 
 export const PREVIOUS_CROPS = [
   "NA",
@@ -28,6 +28,7 @@ export const PREVIOUS_CROPS = [
   "Coriander",
   "Cumin",
   "Fennel",
+  "Turmeric",
   "Vegetables/Mixed",
   "Fodder",
   "Fallow",
