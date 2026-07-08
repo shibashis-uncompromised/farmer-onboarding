@@ -814,7 +814,6 @@ function AddPlotModal(
           checkIconPosition="right" comboboxProps={{ withinPortal: true }} />
         <TextInput
           type="date" label="Sowing date" value={sowingDate}
-          max={todayISO()}
           onChange={(e) => setSowingDate(e.currentTarget.value)}
           leftSection={<CalendarBlank size={16} />}
         />
