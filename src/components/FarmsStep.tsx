@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Box, Button, Card, Center, Group, Image, Loader, Paper, SegmentedControl, Select, Stack, Text,
+  ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Group, Image, Loader, Paper, SegmentedControl, Select, Stack, Text,
   TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -325,8 +325,8 @@ function SoilCropModal(
   { opened, onClose, code, onSave }:
   { opened: boolean; onClose: () => void; code: string | null; onSave: (pastCrops: string) => void }
 ) {
-  const [crop, setCrop] = useState<string | null>(null);
-  useEffect(() => { if (opened) setCrop(null); }, [opened]);
+  const [crop, setCrop] = useState("");
+  useEffect(() => { if (opened) setCrop(""); }, [opened]);
   return (
     <AppModal opened={opened} onClose={onClose} title="Soil sample — previous crop">
       <Stack gap="md">
@@ -334,18 +334,18 @@ function SoilCropModal(
           <ThemeIcon variant="light" color="orange" radius="xl"><Flask size={16} weight="fill" /></ThemeIcon>
           <Text fw={700}>{code}</Text>
         </Group>
-        <Select
+        <Autocomplete
           label="Previous crop"
-          placeholder="Select previous crop"
+          description="Pick from the list, or type a crop that isn't listed"
+          placeholder="Select or type previous crop"
           data={PREVIOUS_CROPS}
           value={crop}
           onChange={setCrop}
-          searchable
-          checkIconPosition="right"
+          comboboxProps={{ withinPortal: true }}
           data-autofocus
           required
         />
-        <Button color="orange" leftSection={<Flask size={16} />} onClick={() => crop && onSave(crop)} disabled={!crop}>
+        <Button color="orange" leftSection={<Flask size={16} />} onClick={() => crop.trim() && onSave(crop.trim())} disabled={!crop.trim()}>
           Save soil sample
         </Button>
       </Stack>

@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v43";
+const CACHE = "farmer-onboarding-v44";
 const TILE_CACHE = "map-tiles-v1";
 const TILE_HOSTS = ["server.arcgisonline.com"];
 
