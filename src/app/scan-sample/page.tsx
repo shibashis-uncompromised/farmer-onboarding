@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { VILLAGES, villageByCode } from "@/lib/villages";
 import { CROPS } from "@/lib/crops";
 import { looksLikeSoilCode, looksLikeFarmerCode } from "@/lib/qr";
-import { CROP_API_VALUE, FIXED, operatorNote, submitPlotData, type PlotResult } from "@/lib/neoperk";
+import { CROP_API_VALUE, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
 import QrScanner from "@/components/QrScanner";
 
 type Stage = "input" | "form" | "result";
@@ -83,7 +83,7 @@ function ScanSampleInner() {
     setOverride(false);
     setForm({
       code, farmerCode, farmerName, coName, villageCode, crop, lat, lng, collectedAt,
-      operatorNote: operatorNote(farmerName, coName, code, collectedAt),
+      operatorNote: operatorNote(code),
       alreadySentId: sample?.neoperkSampleId || "",
     });
     setStage("form");
@@ -99,7 +99,7 @@ function ScanSampleInner() {
     setSending(true);
     try {
       const res = await submitPlotData({
-        farmer_name: form.farmerCode.trim(),
+        farmer_name: neoperkFarmerName(form.farmerName, form.coName, form.farmerCode.trim()),
         village: village.name,
         block: village.block,
         upcoming_crop_cycle: cropApi,

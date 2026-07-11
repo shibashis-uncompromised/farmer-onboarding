@@ -17,18 +17,23 @@ export const CROP_API_VALUE: Record<string, string> = {
 // Fixed values for every Rajasthan submission (per the integration spec).
 export const FIXED = { mobile_number: "9602840151", district: "Udaipur", state: "Rajasthan" };
 
-// operator_note: pipe-separated values (no keys) —
-// "farmer name | c/o name | soil sample id | collection date (DD-MM-YYYY)".
-export function operatorNote(farmerName: string, coName: string, sampleCode: string, collectedAtMs: number): string {
-  const d = new Date(collectedAtMs);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return [(farmerName || "").trim(), (coName || "").trim(), sampleCode, `${dd}-${mm}-${yyyy}`].join(" | ");
+// operator_note: just the soil sample id.
+export function operatorNote(sampleCode: string): string {
+  return (sampleCode || "").trim();
+}
+
+// farmer_name: "Farmer Name (Care-of Name)". Falls back to the RJ code if the
+// name is missing, so the API's required farmer_name is never empty.
+export function neoperkFarmerName(name: string, coName: string, rjCode: string): string {
+  const n = (name || "").trim();
+  const co = (coName || "").trim();
+  let s = n;
+  if (co) s += `${s ? " " : ""}(${co})`;
+  return s || (rjCode || "").trim();
 }
 
 export interface PlotSubmission {
-  farmer_name: string;   // RJ code
+  farmer_name: string;   // "Farmer Name (Care-of Name)"
   village: string;
   block: string;
   upcoming_crop_cycle: string;   // already API-mapped value
