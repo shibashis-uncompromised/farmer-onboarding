@@ -31,6 +31,7 @@ interface FormState {
   lng: number | null;
   collectedAt: number;
   operatorNote: string;
+  alreadySentId: string;   // Neoperk sample_id if this sample was already submitted
 }
 
 function ScanSampleInner() {
@@ -41,6 +42,7 @@ function ScanSampleInner() {
   const [form, setForm] = useState<FormState | null>(null);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<PlotResult | null>(null);
+  const [override, setOverride] = useState(false);   // "send anyway" for an already-sent sample
 
   // Resolve a scanned/typed soil code → prefill everything we can from the app's data.
   const resolveCode = async (raw: string) => {
@@ -74,23 +76,23 @@ function ScanSampleInner() {
         const plots = (await db.plots.where("farmId").equals(sample.farmId).toArray()).filter((p) => !p.deleted);
         crop = plots.find((p) => p.crop)?.crop || "";
       }
-      if (sample.neoperkSampleId) {
-        notifications.show({ color: "blue", message: `Already submitted (sample ${sample.neoperkSampleId})` });
-      }
     } else {
       notifications.show({ color: "yellow", message: "Sample not on this device — enter the details below" });
     }
 
+    setOverride(false);
     setForm({
       code, farmerCode, farmerName, coName, villageCode, crop, lat, lng, collectedAt,
       operatorNote: operatorNote(farmerName, coName, code, collectedAt),
+      alreadySentId: sample?.neoperkSampleId || "",
     });
     setStage("form");
   };
 
   const village = form ? villageByCode(form.villageCode) : undefined;
   const cropApi = form ? CROP_API_VALUE[form.crop] : undefined;
-  const canSend = !!(form && form.farmerCode.trim() && form.villageCode && village && form.crop && cropApi && form.operatorNote.trim());
+  const blockedAsSent = !!(form && form.alreadySentId && !override);
+  const canSend = !!(form && form.farmerCode.trim() && form.villageCode && village && form.crop && cropApi && form.operatorNote.trim()) && !blockedAsSent;
 
   const send = async () => {
     if (!form || !village || !cropApi) return;
@@ -115,7 +117,7 @@ function ScanSampleInner() {
     }
   };
 
-  const reset = () => { setForm(null); setResult(null); setManual(""); setStage("input"); };
+  const reset = () => { setForm(null); setResult(null); setManual(""); setOverride(false); setStage("input"); };
 
   return (
     <Box mih="100dvh" style={{ background: "var(--mantine-color-gray-0)" }}>
@@ -198,10 +200,29 @@ function ScanSampleInner() {
 
             <Text size="xs" c="dimmed">Mobile {FIXED.mobile_number} · {FIXED.state} (fixed)</Text>
 
+            {form.alreadySentId && (
+              <Paper withBorder radius="md" p="sm" style={{ background: "var(--mantine-color-orange-0)", borderColor: "var(--mantine-color-orange-3)" }}>
+                <Group gap={8} align="flex-start" wrap="nowrap">
+                  <WarningCircle size={18} weight="fill" color="var(--mantine-color-orange-6)" />
+                  <div style={{ flex: 1 }}>
+                    <Text size="sm" fw={600}>Already sent to the scanner</Text>
+                    <Text size="xs" c="dimmed">Scanner sample ID <b>{form.alreadySentId}</b>. Sending again will create a duplicate record.</Text>
+                    {!override && (
+                      <Button size="xs" variant="light" color="orange" mt={8} onClick={() => setOverride(true)}>
+                        Send anyway
+                      </Button>
+                    )}
+                  </div>
+                </Group>
+              </Paper>
+            )}
+
             <Button size="md" leftSection={<PaperPlaneTilt size={18} />} onClick={send} loading={sending} disabled={!canSend}>
               Confirm & send to scanner
             </Button>
-            {!canSend && (
+            {blockedAsSent ? (
+              <Text size="xs" c="dimmed" ta="center">This sample was already sent — tap “Send anyway” above to re-submit.</Text>
+            ) : !canSend && (
               <Text size="xs" c="dimmed" ta="center">Fill the required fields (farmer code, village, crop) to enable sending.</Text>
             )}
             <Button variant="subtle" color="gray" onClick={reset}>Cancel</Button>
