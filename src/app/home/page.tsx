@@ -9,7 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode, Trash,
+  QrCode, Trash, Flask,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -219,6 +219,10 @@ function HomeInner() {
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item leftSection={<Flask size={16} />} onClick={() => router.push("/scan-sample/")}>
+                  Scan sample
+                </Menu.Item>
+                <Menu.Divider />
                 <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncState === "syncing"}
                   rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
                   {syncState === "syncing" ? "Syncing…" : "Sync now"}

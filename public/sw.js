@@ -1,6 +1,6 @@
 /* Runtime-caching service worker for offline use.
    App DATA lives in IndexedDB (not here), so it's always available offline. */
-const CACHE = "farmer-onboarding-v44";
+const CACHE = "farmer-onboarding-v48";
 const TILE_CACHE = "map-tiles-v1";
 const TILE_HOSTS = ["server.arcgisonline.com"];
 
@@ -9,7 +9,7 @@ try { importScripts("/sw-manifest.js"); } catch (e) {}
 const CHUNKS = self.__PRECACHE_MANIFEST || [];
 
 const SHELLS = [
-  "/", "/home/", "/farmer/", "/login/",
+  "/", "/home/", "/farmer/", "/login/", "/scan-sample/",
   "/manifest.webmanifest",
   "/icons/logo.png", "/icons/icon-192.png", "/icons/icon-512.png",
   "/icons/apple-touch-icon.png", "/icons/maskable-512.png", "/icons/favicon.png",

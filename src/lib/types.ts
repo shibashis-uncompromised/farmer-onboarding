@@ -91,6 +91,8 @@ export interface SoilSample {
   lng: number | null;
   accuracy: number | null;
   pastCrops?: string;    // previous crop on this plot
+  neoperkSampleId?: string;   // sample_id returned after submitting to the Neoperk scanner system
+  submittedAt?: number;       // when submitted to Neoperk
   createdAt: number;     // when scanned
   updatedAt: number;
   synced: boolean;
