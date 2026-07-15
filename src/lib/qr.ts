@@ -56,8 +56,11 @@ export function isReservedImportedFarmerCode(code: string): boolean {
   return seq >= 1 && seq <= (maxByVillage[m[1].toUpperCase()] || 0);
 }
 
-// Soil-sample codes look like RJ-AMOD-SA001 / RJ-VELA-SB034:
-//   <REGION>-<VILLAGE>-S<letter><digits>
+// Soil-sample codes look like RJ-AMOD-SA001 / RJ-VELA-SB034, and we also accept
+// the same code without the leading "S" (RJ-VELA-A005 == RJ-VELA-SA005). The
+// leading "S" is therefore optional. The (?![UF]\d) guard keeps farmer codes
+// (…-U001 / …-F229) from ever matching as a soil code.
+//   <REGION>-<VILLAGE>-[S]<letter><digits>
 export function looksLikeSoilCode(code: string): boolean {
-  return /^[A-Z]{2,}-[A-Z0-9]+-S[A-Z]\d+$/i.test((code || "").trim());
+  return /^[A-Z]{2,}-[A-Z0-9]+-S?(?![UF]\d)[A-Z]\d+$/i.test((code || "").trim());
 }

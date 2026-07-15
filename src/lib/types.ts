@@ -32,6 +32,7 @@ export interface Farmer {
 
 export interface Farm {
   id: string;            // RJ{village}F{seq}  e.g. RJ001F001
+  alias?: string;        // sanitized sequential id per village (F001…); see farm-aliases/ map
   farmerId: string;
   villageCode: string;
   photoId: string | null;
