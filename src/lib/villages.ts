@@ -35,10 +35,10 @@ export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === c
 
 // ---- Per-user village scoping (UI-only) ----
 // Which region(s) each user may see. Unlisted users default to RJ, so existing
-// accounts (admin/field/demo) keep seeing exactly the RJ villages they do today.
+// accounts (field/demo) keep seeing exactly the RJ villages they do today.
 const USER_REGIONS: Record<string, string[]> = {
   mpfield: ["MP"],
-  admin: ["RJ", "GJ"],   // admin sees Rajasthan + Gujarat (Junagadh)
+  admin: ["RJ", "MP", "GJ"],   // admin sees every active region
 };
 
 export function regionsForUser(username: string | null | undefined): string[] {
