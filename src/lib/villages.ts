@@ -10,6 +10,8 @@ export interface Village {
   block: string;
   idCode: string;   // ID abbreviation, e.g. "VELA"
   region: string;   // state/region — also the ID prefix: "RJ" (Rajasthan) | "MP" (Madhya Pradesh)
+  state: string;    // Neoperk state (exact enum): "Rajasthan" | "Madhya Pradesh" | "Gujarat"
+  district: string; // Neoperk district (exact enum spelling for that state's project)
 }
 
 // Default region prefix (kept for back-compat; villages now carry their own).
@@ -18,18 +20,28 @@ export const REGION_PREFIX = "RJ";
 // Order here drives the village dropdown order. Udai & Belua 1/2 are kept on
 // top for the active onboarding push; codes stay fixed so existing IDs match.
 export const VILLAGES: Village[] = [
-  { code: "004", name: "Udai", block: "Sarada", idCode: "UDAI", region: "RJ" },
-  { code: "005", name: "Belua 1", block: "Sarada", idCode: "BELU", region: "RJ" },
-  { code: "006", name: "Belua 2", block: "Sarada", idCode: "BELU", region: "RJ" },
-  { code: "001", name: "Velua", block: "Jhadol", idCode: "VELA", region: "RJ" },
-  { code: "002", name: "Aamod", block: "Jhadol", idCode: "AMOD", region: "RJ" },
-  { code: "003", name: "Fatehpur", block: "Khamnor", idCode: "FTHP", region: "RJ" },
+  { code: "004", name: "Udai", block: "Sarada", idCode: "UDAI", region: "RJ", state: "Rajasthan", district: "Udaipur" },
+  { code: "005", name: "Belua 1", block: "Sarada", idCode: "BELU", region: "RJ", state: "Rajasthan", district: "Udaipur" },
+  { code: "006", name: "Belua 2", block: "Sarada", idCode: "BELU", region: "RJ", state: "Rajasthan", district: "Udaipur" },
+  { code: "001", name: "Velua", block: "Jhadol", idCode: "VELA", region: "RJ", state: "Rajasthan", district: "Udaipur" },
+  { code: "002", name: "Aamod", block: "Jhadol", idCode: "AMOD", region: "RJ", state: "Rajasthan", district: "Udaipur" },
+  { code: "003", name: "Fatehpur", block: "Khamnor", idCode: "FTHP", region: "RJ", state: "Rajasthan", district: "Udaipur" },
   // Madhya Pradesh villages — IDs use the MP prefix (e.g. MP-SUND-U001).
-  { code: "007", name: "Sundrel", block: "Madhya Pradesh", idCode: "SUND", region: "MP" },
-  { code: "008", name: "Ajjini", block: "Madhya Pradesh", idCode: "AJNI", region: "MP" },
+  // block is free-text on Neoperk (not validated); confirm exact tehsil with the field team.
+  { code: "007", name: "Sundrel", block: "Sundrel", idCode: "SUND", region: "MP", state: "Madhya Pradesh", district: "Dhar" },
+  { code: "008", name: "Ajjini", block: "Ajjini", idCode: "AJNI", region: "MP", state: "Madhya Pradesh", district: "Barwani" },
   // Gujarat village — IDs use the GJ prefix (e.g. GJ-JUNA-U001).
-  { code: "009", name: "Junagadh", block: "Gujarat", idCode: "JUNA", region: "GJ" },
+  { code: "009", name: "Junagadh", block: "Junagadh", idCode: "JUNA", region: "GJ", state: "Gujarat", district: "Junagadh" },
 ];
+
+// Neoperk district enums per state (exact spellings from each project's reference
+// endpoint). Used to populate the district dropdown; district IS validated by the API.
+export const NEOPERK_STATES = ["Rajasthan", "Madhya Pradesh", "Gujarat"] as const;
+export const DISTRICTS_BY_STATE: Record<string, string[]> = {
+  "Rajasthan": ["Ajmer","Alwar","Banswara","Baran","Barmer","Bharatpur","Bhilwara","Bikaner","Bundi","Chittaurgarh","Churu","Dausa","Dhaulpur","Dungarpur","Jaipur","Jaisalmer","Jalor","Jhalawar","Jhunjhunun","Jodhpur","Karauli","Kota","Nagaur","Pali","Pratapgarh","Rajsamand","Sawai Madhopur","Sikar","Sirohi","Tonk","Udaipur"],
+  "Madhya Pradesh": ["Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Mandla","Mandsaur","Morena","Narsimhapur","Neemuch","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha"],
+  "Gujarat": ["Ahmadabad","Amreli","Anand","Banas Kantha","Bharuch","Bhavnagar","Dohad","Gandhinagar","Jamnagar","Junagadh","Kachchh","Kheda","Mahesana","Narmada","Navsari","Panch Mahals","Patan","Porbandar","Rajkot","Sabar Kantha","Surat","Surendranagar","Tapi","The Dangs","Vadodara","Valsad"],
+};
 
 export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === code);
 

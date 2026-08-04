@@ -12,7 +12,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { VILLAGES, villageByCode } from "@/lib/villages";
+import { VILLAGES, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE } from "@/lib/villages";
 import { CROPS } from "@/lib/crops";
 import { looksLikeSoilCode, looksLikeFarmerCode } from "@/lib/qr";
 import { CROP_API_VALUE, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
@@ -25,7 +25,10 @@ interface FormState {
   farmerCode: string;      // RJ code
   farmerName: string;      // farmer full name
   coName: string;          // care-of name
-  villageCode: string;     // drives village name + block
+  villageCode: string;     // drives village name (and default state/district/block)
+  state: string;           // Neoperk state (selects the project token)
+  district: string;        // Neoperk district (validated enum)
+  block: string;           // Neoperk block (free-text, editable)
   crop: string;            // app label
   lat: number | null;
   lng: number | null;
@@ -80,9 +83,20 @@ function ScanSampleInner() {
       notifications.show({ color: "yellow", message: "Sample not on this device — enter the details below" });
     }
 
+    // If we still have no village, derive it from the code's abbreviation
+    // (RJ-AMOD-… → Aamod) so state/district/block prefill even for a sample
+    // that isn't on this device.
+    if (!villageCode) {
+      const ab = code.split("-")[1] || "";
+      villageCode = VILLAGES.find((v) => v.idCode.toUpperCase() === ab)?.code || "";
+    }
+
+    const v0 = villageCode ? villageByCode(villageCode) : undefined;
     setOverride(false);
     setForm({
-      code, farmerCode, farmerName, coName, villageCode, crop, lat, lng, collectedAt,
+      code, farmerCode, farmerName, coName, villageCode,
+      state: v0?.state || "", district: v0?.district || "", block: v0?.block || "",
+      crop, lat, lng, collectedAt,
       operatorNote: operatorNote(code),
       alreadySentId: sample?.neoperkSampleId || "",
     });
@@ -91,8 +105,14 @@ function ScanSampleInner() {
 
   const village = form ? villageByCode(form.villageCode) : undefined;
   const cropApi = form ? CROP_API_VALUE[form.crop] : undefined;
+  const districtOptions = form && form.state ? (DISTRICTS_BY_STATE[form.state] || []) : [];
+  const districtValid = !!(form && form.district && districtOptions.includes(form.district));
   const blockedAsSent = !!(form && form.alreadySentId && !override);
-  const canSend = !!(form && form.farmerCode.trim() && form.villageCode && village && form.crop && cropApi && form.operatorNote.trim()) && !blockedAsSent;
+  const canSend = !!(
+    form && form.farmerCode.trim() && form.villageCode && village &&
+    form.state && districtValid && form.block.trim() &&
+    form.crop && cropApi && form.operatorNote.trim()
+  ) && !blockedAsSent;
 
   const send = async () => {
     if (!form || !village || !cropApi) return;
@@ -100,8 +120,10 @@ function ScanSampleInner() {
     try {
       const res = await submitPlotData({
         farmer_name: neoperkFarmerName(form.farmerName, form.coName, form.farmerCode.trim()),
+        state: form.state,
+        district: form.district,
         village: village.name,
-        block: village.block,
+        block: form.block.trim(),
         upcoming_crop_cycle: cropApi,
         operator_note: form.operatorNote.trim(),
       });
@@ -174,16 +196,42 @@ function ScanSampleInner() {
 
             <Select
               label="Village" required withAsterisk placeholder="Select village"
-              data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
+              data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} · ${v.state}` }))}
               value={form.villageCode || null}
-              onChange={(v) => setForm({ ...form, villageCode: v || "" })}
+              onChange={(v) => {
+                const vv = v ? villageByCode(v) : undefined;
+                // Re-derive state/district/block from the newly picked village.
+                setForm({
+                  ...form, villageCode: v || "",
+                  state: vv?.state || form.state,
+                  district: vv?.district || "",
+                  block: vv?.block || "",
+                });
+              }}
               comboboxProps={{ withinPortal: true }} checkIconPosition="right"
             />
 
+            <Select
+              label="State" required withAsterisk placeholder="Select state"
+              data={NEOPERK_STATES.map((s) => ({ value: s, label: s }))}
+              value={form.state || null}
+              onChange={(s) => setForm({ ...form, state: s || "", district: "" })}
+              comboboxProps={{ withinPortal: true }} checkIconPosition="right"
+              description="Selects the Neoperk project"
+            />
+
             <Group grow>
-              <TextInput label="District" value={FIXED.district} readOnly variant="filled" />
-              <TextInput label="Block" value={village?.block || ""} readOnly variant="filled"
-                placeholder="from village" error={form.villageCode && !village ? "unknown" : undefined} />
+              <Select
+                label="District" required withAsterisk placeholder={form.state ? "Select district" : "Pick state first"}
+                data={districtOptions.map((d) => ({ value: d, label: d }))}
+                value={form.district || null}
+                onChange={(d) => setForm({ ...form, district: d || "" })}
+                disabled={!form.state} searchable
+                comboboxProps={{ withinPortal: true }} checkIconPosition="right"
+                error={form.district && !districtValid ? "not valid for this state" : undefined}
+              />
+              <TextInput label="Block" required withAsterisk value={form.block}
+                placeholder="e.g. Sarada" onChange={(e) => setForm({ ...form, block: e.currentTarget.value })} />
             </Group>
 
             <Select
@@ -198,7 +246,10 @@ function ScanSampleInner() {
             <Textarea label="Operator note" autosize minRows={2} value={form.operatorNote}
               onChange={(e) => setForm({ ...form, operatorNote: e.currentTarget.value })} />
 
-            <Text size="xs" c="dimmed">Mobile {FIXED.mobile_number} · {FIXED.state} (fixed)</Text>
+            <Text size="xs" c="dimmed">
+              Mobile {FIXED.mobile_number} (fixed) · sending to <b>{form.state || "—"}</b> project
+              {form.district ? ` · ${form.district}` : ""}
+            </Text>
 
             {form.alreadySentId && (
               <Paper withBorder radius="md" p="sm" style={{ background: "var(--mantine-color-orange-0)", borderColor: "var(--mantine-color-orange-3)" }}>
@@ -223,7 +274,7 @@ function ScanSampleInner() {
             {blockedAsSent ? (
               <Text size="xs" c="dimmed" ta="center">This sample was already sent — tap “Send anyway” above to re-submit.</Text>
             ) : !canSend && (
-              <Text size="xs" c="dimmed" ta="center">Fill the required fields (farmer code, village, crop) to enable sending.</Text>
+              <Text size="xs" c="dimmed" ta="center">Fill the required fields (farmer code, village, state, district, block, crop) to enable sending.</Text>
             )}
             <Button variant="subtle" color="gray" onClick={reset}>Cancel</Button>
           </Stack>

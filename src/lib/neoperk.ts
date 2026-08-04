@@ -14,8 +14,10 @@ export const CROP_API_VALUE: Record<string, string> = {
   Turmeric: "turmeric",
 };
 
-// Fixed values for every Rajasthan submission (per the integration spec).
-export const FIXED = { mobile_number: "9602840151", district: "Udaipur", state: "Rajasthan" };
+// Fixed value on every submission (org contact number). state/district/village/
+// block are now selected per sample and drive which Neoperk project the backend
+// routes to (each state = a different project token, resolved server-side).
+export const FIXED = { mobile_number: "9602840151" };
 
 // operator_note: just the soil sample id.
 export function operatorNote(sampleCode: string): string {
@@ -34,6 +36,8 @@ export function neoperkFarmerName(name: string, coName: string, rjCode: string):
 
 export interface PlotSubmission {
   farmer_name: string;   // "Farmer Name (Care-of Name)"
+  state: string;         // exact Neoperk state — selects the project token server-side
+  district: string;      // exact Neoperk district enum value for that state
   village: string;
   block: string;
   upcoming_crop_cycle: string;   // already API-mapped value
