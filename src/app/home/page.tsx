@@ -93,8 +93,8 @@ function HomeInner() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (farmers || []).filter((f) => {
-      // Type filter: treat a missing farmerType as "lead" (the default).
-      if (typeFilter !== "all" && (f.farmerType || "lead") !== typeFilter) return false;
+      // Type filter: treat a missing farmerType as "existing" (the default).
+      if (typeFilter !== "all" && (f.farmerType || "existing") !== typeFilter) return false;
       if (!q) return true;
       return (
         `${f.firstName} ${f.lastName}`.toLowerCase().includes(q) ||
@@ -304,8 +304,8 @@ function HomeInner() {
                       <Box style={{ flex: 1, minWidth: 0 }}>
                         <Group gap={6} wrap="nowrap">
                           <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
-                          <Badge size="xs" variant="light" color={(f.farmerType || "lead") === "existing" ? "grape" : "blue"} style={{ flexShrink: 0 }}>
-                            {(f.farmerType || "lead") === "existing" ? "Existing" : "Lead"}
+                          <Badge size="xs" variant="light" color={(f.farmerType || "existing") === "existing" ? "grape" : "blue"} style={{ flexShrink: 0 }}>
+                            {(f.farmerType || "existing") === "existing" ? "Existing" : "Lead"}
                           </Badge>
                         </Group>
                         <Text size="sm" c="dimmed" truncate>

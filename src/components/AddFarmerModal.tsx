@@ -25,7 +25,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
   const [village, setVillage] = useState(defaultVillage);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
-  const [farmerType, setFarmerType] = useState<"lead" | "existing">("lead");
+  const [farmerType, setFarmerType] = useState<"lead" | "existing">("existing");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
       setVillage((scannedCode && villageCodeFromId(scannedCode)) || defaultVillage);
       setFirst("");
       setLast("");
-      setFarmerType("lead");
+      setFarmerType("existing");
     }
   }, [opened, defaultVillage, scannedCode]);
 

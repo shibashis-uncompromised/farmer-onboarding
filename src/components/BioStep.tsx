@@ -39,7 +39,7 @@ export default function BioStep({
   const [smartphone, setSmartphone] = useState<string>(
     farmer.hasSmartphone == null ? "" : farmer.hasSmartphone ? "yes" : "no"
   );
-  const [farmerType, setFarmerType] = useState<"lead" | "existing">(farmer.farmerType || "lead");
+  const [farmerType, setFarmerType] = useState<"lead" | "existing">(farmer.farmerType || "existing");
   const [note, setNote] = useState(farmer.note || "");
   const [seeds, setSeeds] = useState<SeedPackage[]>(farmer.seeds || []);
   const [photo, setPhoto] = useState<Blob | null>(null);

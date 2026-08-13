@@ -69,7 +69,7 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
         return [
           f.id, f.firstName, f.lastName, f.coFirstName, f.coLastName, f.coRelation,
           f.phone, f.hasSmartphone == null ? "" : f.hasSmartphone ? "Yes" : "No",
-          (f.farmerType || "lead") === "existing" ? "Existing" : "Lead", f.note || "",
+          (f.farmerType || "existing") === "lead" ? "Lead" : "Existing", f.note || "",
           seedsText(f.seeds), seedsTotal(f.seeds) || "",
           v?.name || f.villageCode, v?.block || "", f.bioComplete ? "Yes" : "No",
           f.photoId ? farmerPhotoFile(f) : "", fmtTs(f.createdAt), fmtTs(f.updatedAt),
