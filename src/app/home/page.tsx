@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ActionIcon, Affix, Box, Button, Center, Container, Group, Image, Loader, Menu, Paper,
+  ActionIcon, Affix, Badge, Box, Button, Center, Container, Group, Image, Loader, Menu, Paper,
   ScrollArea, Select, Stack, Text, TextInput, Title, UnstyledButton,
 } from "@mantine/core";
 import {
@@ -48,6 +48,7 @@ function HomeInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [villages, village]);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "lead" | "existing">("all");
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
@@ -92,6 +93,8 @@ function HomeInner() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (farmers || []).filter((f) => {
+      // Type filter: treat a missing farmerType as "lead" (the default).
+      if (typeFilter !== "all" && (f.farmerType || "lead") !== typeFilter) return false;
       if (!q) return true;
       return (
         `${f.firstName} ${f.lastName}`.toLowerCase().includes(q) ||
@@ -100,7 +103,7 @@ function HomeInner() {
         f.phone.includes(q)
       );
     });
-  }, [farmers, search]);
+  }, [farmers, search, typeFilter]);
 
   const doExport = async () => {
     setExporting(true);
@@ -259,11 +262,19 @@ function HomeInner() {
       </Box>
 
       <Container size="sm" py="md">
-        <TextInput
-          placeholder="Search by name, C/o, ID or phone" value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)} size="md" radius="md" mb="md"
-          leftSection={<MagnifyingGlass size={18} />}
-        />
+        <Group gap="sm" mb="md" wrap="nowrap" align="flex-start">
+          <TextInput
+            placeholder="Search by name, C/o, ID or phone" value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)} size="md" radius="md"
+            leftSection={<MagnifyingGlass size={18} />} style={{ flex: 1 }}
+          />
+          <Select
+            value={typeFilter} onChange={(v) => setTypeFilter((v as "all" | "lead" | "existing") || "all")}
+            data={[{ value: "all", label: "All" }, { value: "lead", label: "Leads" }, { value: "existing", label: "Existing" }]}
+            allowDeselect={false} checkIconPosition="right" size="md" radius="md" w={130}
+            aria-label="Filter by type"
+          />
+        </Group>
 
         {farmers === undefined ? (
           // Local DB read only (milliseconds) — NOT tied to sync/network at all.
@@ -291,7 +302,12 @@ function HomeInner() {
                     <Group wrap="nowrap" gap="sm">
                       <StatusIcon status={status} />
                       <Box style={{ flex: 1, minWidth: 0 }}>
-                        <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
+                        <Group gap={6} wrap="nowrap">
+                          <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
+                          <Badge size="xs" variant="light" color={(f.farmerType || "lead") === "existing" ? "grape" : "blue"} style={{ flexShrink: 0 }}>
+                            {(f.farmerType || "lead") === "existing" ? "Existing" : "Lead"}
+                          </Badge>
+                        </Group>
                         <Text size="sm" c="dimmed" truncate>
                           {co ? `C/o ${co}` : f.id}
                         </Text>

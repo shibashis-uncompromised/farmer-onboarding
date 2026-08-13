@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Group, Select, Stack, TextInput } from "@mantine/core";
+import { Button, Group, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
 import AppModal from "./AppModal";
 import { UserPlus } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
@@ -25,6 +25,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
   const [village, setVillage] = useState(defaultVillage);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
+  const [farmerType, setFarmerType] = useState<"lead" | "existing">("lead");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
       setVillage((scannedCode && villageCodeFromId(scannedCode)) || defaultVillage);
       setFirst("");
       setLast("");
+      setFarmerType("lead");
     }
   }, [opened, defaultVillage, scannedCode]);
 
@@ -66,7 +68,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
         id, villageCode: village,
         firstName: first.trim(), lastName: last.trim(),
         coFirstName: "", coLastName: "", coRelation: "", phone: "",
-        hasSmartphone: null, note: "", photoId: null, seeds: [], bioComplete: false,
+        hasSmartphone: null, farmerType, note: "", photoId: null, seeds: [], bioComplete: false,
         createdAt: now, updatedAt: now, synced: false,
       };
       await db.farmers.add(farmer);
@@ -96,6 +98,13 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
           onChange={(e) => setLast(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (canSave) save(); } }}
           enterKeyHint="done" required />
+        <div>
+          <Text size="sm" fw={500} mb={6}>Type</Text>
+          <SegmentedControl
+            fullWidth value={farmerType} onChange={(v) => setFarmerType(v as "lead" | "existing")}
+            data={[{ label: "Lead", value: "lead" }, { label: "Existing", value: "existing" }]}
+          />
+        </div>
         <Group justify="flex-end" mt="xs">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button onClick={save} loading={saving} disabled={!canSave} leftSection={<UserPlus size={18} />}>

@@ -39,6 +39,7 @@ export default function BioStep({
   const [smartphone, setSmartphone] = useState<string>(
     farmer.hasSmartphone == null ? "" : farmer.hasSmartphone ? "yes" : "no"
   );
+  const [farmerType, setFarmerType] = useState<"lead" | "existing">(farmer.farmerType || "lead");
   const [note, setNote] = useState(farmer.note || "");
   const [seeds, setSeeds] = useState<SeedPackage[]>(farmer.seeds || []);
   const [photo, setPhoto] = useState<Blob | null>(null);
@@ -81,7 +82,7 @@ export default function BioStep({
         coFirstName: coOn ? coFirst.trim() : "", coLastName: coOn ? coLast.trim() : "",
         coRelation: coOn ? relation : "",
         phone: phone.trim(), hasSmartphone: smartphone === "" ? null : smartphone === "yes",
-        note: note.trim(),
+        farmerType, note: note.trim(),
         seeds: seeds.map((s) => ({ seed: s.seed, qty: s.qty })),
         photoId, bioComplete: true, updatedAt: Date.now(), synced: false,
       });
@@ -113,7 +114,12 @@ export default function BioStep({
             {first?.[0]}{last?.[0]}
           </Avatar>
           <div>
-            <Text fw={700} size="lg">{first} {last}</Text>
+            <Group gap={8} align="center">
+              <Text fw={700} size="lg">{first} {last}</Text>
+              <Badge size="sm" variant="light" color={farmerType === "existing" ? "grape" : "blue"}>
+                {farmerType === "existing" ? "Existing" : "Lead"}
+              </Badge>
+            </Group>
             {co && <Text c="dimmed">{relation} {co}</Text>}
             <Text size="sm" c="dimmed">{farmer.id}</Text>
           </div>
@@ -158,6 +164,14 @@ export default function BioStep({
           <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
         </Box>
       </Group>
+
+      <div>
+        <Text size="sm" fw={500} mb={6}>Type</Text>
+        <SegmentedControl
+          fullWidth value={farmerType} onChange={(v) => setFarmerType(v as "lead" | "existing")}
+          data={[{ label: "Lead", value: "lead" }, { label: "Existing", value: "existing" }]}
+        />
+      </div>
 
       <Switch
         checked={coOn} onChange={(e) => setCoOn(e.currentTarget.checked)}

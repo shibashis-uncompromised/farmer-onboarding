@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
   ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Group, Image, Loader, Paper, SegmentedControl, Select, Stack, Text,
-  TextInput, ThemeIcon, Timeline, UnstyledButton,
+  Textarea, TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -429,6 +429,15 @@ function FarmDetailModal(
           )}
         </Paper>
 
+        {farm.note && farm.note.trim() && (
+          <Paper withBorder radius="md" p="sm">
+            <Text size="sm" fw={500} mb={4}>
+              <Group gap={6} component="span"><PencilSimple size={16} /> Note</Group>
+            </Text>
+            <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>{farm.note}</Text>
+          </Paper>
+        )}
+
         <Button variant="light" leftSection={<PencilSimple size={16} />} onClick={onEdit}>
           Edit farm
         </Button>
@@ -642,6 +651,7 @@ function AddFarmModal(
   const [photoDirty, setPhotoDirty] = useState(false);
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [boundary, setBoundary] = useState<BoundaryPoint[]>([]);
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   const existingPhoto = useLiveQuery(
@@ -658,8 +668,9 @@ function AddFarmModal(
         ? { lat: editFarm.lat, lng: editFarm.lng, accuracy: editFarm.accuracy ?? 0, at: editFarm.updatedAt }
         : null);
       setBoundary(editFarm.boundary ?? []);
+      setNote(editFarm.note ?? "");
     } else {
-      setPhoto(null); setLoc(null); setBoundary([]);
+      setPhoto(null); setLoc(null); setBoundary([]); setNote("");
     }
   }, [opened, editFarm]);
 
@@ -681,7 +692,8 @@ function AddFarmModal(
         }
         await db.farms.update(editFarm.id, {
           photoId, lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-          boundary: boundary.length ? boundary : undefined, updatedAt: now, synced: false,
+          boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
+          updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Farm ${editFarm.id} updated` });
@@ -692,7 +704,7 @@ function AddFarmModal(
         await db.farms.add({
           id, farmerId, villageCode, photoId,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-          boundary: boundary.length ? boundary : undefined,
+          boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
@@ -726,6 +738,11 @@ function AddFarmModal(
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
         <LocationCapture loc={loc} onCapture={setLoc} />
         <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
+        <Textarea
+          label="Note (optional)" placeholder="Any note about this farm…"
+          value={note} onChange={(e) => setNote(e.currentTarget.value)}
+          autosize minRows={2} maxRows={5}
+        />
       </Stack>
     </AppModal>
   );

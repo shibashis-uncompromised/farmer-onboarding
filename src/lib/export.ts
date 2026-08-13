@@ -63,12 +63,13 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "farmers.csv",
     toCSV(
-      ["Farmer ID","First Name","Last Name","C/o First","C/o Last","Relation","Phone","Smartphone","Note","Seeds","Total Packages","Village","Block","Bio Complete","Photo File","Created","Updated"],
+      ["Farmer ID","First Name","Last Name","C/o First","C/o Last","Relation","Phone","Smartphone","Type","Note","Seeds","Total Packages","Village","Block","Bio Complete","Photo File","Created","Updated"],
       farmers.map((f) => {
         const v = villageByCode(f.villageCode);
         return [
           f.id, f.firstName, f.lastName, f.coFirstName, f.coLastName, f.coRelation,
-          f.phone, f.hasSmartphone == null ? "" : f.hasSmartphone ? "Yes" : "No", f.note || "",
+          f.phone, f.hasSmartphone == null ? "" : f.hasSmartphone ? "Yes" : "No",
+          (f.farmerType || "lead") === "existing" ? "Existing" : "Lead", f.note || "",
           seedsText(f.seeds), seedsTotal(f.seeds) || "",
           v?.name || f.villageCode, v?.block || "", f.bioComplete ? "Yes" : "No",
           f.photoId ? farmerPhotoFile(f) : "", fmtTs(f.createdAt), fmtTs(f.updatedAt),
@@ -81,14 +82,14 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   zip.file(
     "farms.csv",
     toCSV(
-      ["Farm ID", ...FARMER_HEADERS, "Village", "Latitude", "Longitude", "Accuracy (m)", "Boundary Points", "Boundary Coords", "Photo File", "Created"],
+      ["Farm ID", ...FARMER_HEADERS, "Village", "Latitude", "Longitude", "Accuracy (m)", "Note", "Boundary Points", "Boundary Coords", "Photo File", "Created"],
       farms.map((fm) => {
         const v = villageByCode(fm.villageCode);
         const farmer = farmerById.get(fm.farmerId);
         const bnd = fm.boundary || [];
         return [
           fm.id, ...farmerValues(farmer), v?.name || fm.villageCode, fm.lat ?? "", fm.lng ?? "",
-          fm.accuracy ?? "",
+          fm.accuracy ?? "", fm.note || "",
           bnd.length || "",
           bnd.map((p) => `${p.lat.toFixed(6)} ${p.lng.toFixed(6)}`).join("; "),
           fm.photoId ? farmPhotoFile(fm.id, farmer) : "", fmtTs(fm.createdAt),

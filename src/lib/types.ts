@@ -20,6 +20,7 @@ export interface Farmer {
   coRelation: string;    // e.g. S/o, W/o, D/o
   phone: string;
   hasSmartphone: boolean | null;
+  farmerType?: "lead" | "existing";   // lead (prospect) vs existing farmer
   note: string;             // optional note from the onboarding team
   photoId: string | null;   // -> media table
   seeds?: SeedPackage[];    // seed packages for this farmer (rides in the synced record)
@@ -39,6 +40,7 @@ export interface Farm {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
+  note?: string;                // optional note about this farm
   boundary?: BoundaryPoint[];   // optional polygon: GPS points captured at corners
   createdAt: number;
   updatedAt: number;
