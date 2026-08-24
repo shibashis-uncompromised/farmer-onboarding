@@ -1,15 +1,17 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Group, Image, Loader, Paper, SegmentedControl, Select, Stack, Text,
-  Textarea, TextInput, ThemeIcon, Timeline, UnstyledButton,
+  ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Divider, Group, Image, Loader, MultiSelect, NumberInput, Paper,
+  SegmentedControl, Select, SimpleGrid, Stack, Text, Textarea, TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
   Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
-  Flask, ClockCounterClockwise, PencilSimple, CalendarBlank,
+  Flask, ClockCounterClockwise, PencilSimple, CalendarBlank, DeviceMobile, Users, Drop,
+  Warning, PawPrint, Tractor, TrendUp, Sun, Shield,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -19,7 +21,14 @@ import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
 import { boundsAroundPoint, downloadTiles } from "@/lib/offlineTiles";
 import { looksLikeFarmerCode, looksLikeSoilCode } from "@/lib/qr";
 import { useSession } from "@/providers/SessionGate";
-import type { Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample } from "@/lib/types";
+import { getSession } from "@/lib/session";
+import { apiElevation, type ElevationPoint } from "@/lib/api";
+import type {
+  Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample, SoilTexture,
+  MobileCoverage, FarmShape, FarmerFocus, WaterSource, IrrigationAvailable, Season, KnownIssue,
+  AnimalPressure, Accessibility, BenchmarkComparison, PreviousCropProduction,
+  Gradient, WaterloggingProbability, SunlightAvailability, FencingAvailability,
+} from "@/lib/types";
 import { softDeletePlot } from "@/lib/softDelete";
 import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
 import { useMediaUrl } from "@/lib/useMediaUrl";
@@ -27,6 +36,156 @@ import PhotoInput from "./PhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
 import MapErrorBoundary from "./MapErrorBoundary";
+
+// ---- Option lists for the new data-collection fields (grouped by who fills them in) ----
+const MOBILE_COVERAGE_OPTS = [
+  { value: "good", label: "Good" }, { value: "weak", label: "Weak" }, { value: "none", label: "None" },
+];
+const SHAPE_OPTS = [
+  { value: "rectangle", label: "Rectangle" }, { value: "square", label: "Square" },
+  { value: "trapezoid", label: "Trapezoid" }, { value: "irregular", label: "Irregular" },
+];
+const SHAPE_LABEL: Record<string, string> = Object.fromEntries(SHAPE_OPTS.map((o) => [o.value, o.label]));
+
+// Familiar, direct frequency labels — this is the SUPERVISOR's required
+// visit cadence for this farm, not how often the farmer themselves works it.
+const FARMER_FOCUS_OPTS = [
+  { value: "daily", label: "Daily" }, { value: "twice_weekly", label: "Twice a week" }, { value: "weekly_plus", label: "Weekly or less" },
+];
+const FARMER_FOCUS_DESCRIPTIONS: Record<FarmerFocus, string> = {
+  daily: "Daily — supervisor should check in on this farm every day.",
+  twice_weekly: "Twice a week — supervisor should check in on this farm a couple of times a week.",
+  weekly_plus: "Weekly or less — supervisor can check in on this farm about once a week or less often.",
+};
+const WATER_SOURCE_OPTS = [
+  { value: "rainfed", label: "Rainfed" }, { value: "borewell", label: "Borewell" },
+  { value: "open_well", label: "Open well" }, { value: "farm_pond", label: "Farm pond" },
+  { value: "anicut_river", label: "Anicut / River" },
+];
+// Water Source used to be a single value — tolerate farms saved under that
+// old shape (a bare string) as well as the current array shape, since JSONB
+// rows from before this change aren't retroactively migrated.
+function asWaterSourceArray(v: unknown): WaterSource[] {
+  if (Array.isArray(v)) return v as WaterSource[];
+  return v ? [v as WaterSource] : [];
+}
+const IRRIGATION_OPTS = [
+  { value: "none", label: "None" }, { value: "flood", label: "Flood" },
+  { value: "sprinkler", label: "Sprinkler" }, { value: "drip", label: "Drip" },
+];
+const SEASON_OPTS = [
+  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" },
+];
+const KNOWN_ISSUE_OPTS = [
+  { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
+  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" },
+];
+const ANIMAL_PRESSURE_OPTS = [
+  { value: "nilgai", label: "Nilgai" }, { value: "boar", label: "Boar" }, { value: "monkey", label: "Monkey" },
+  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" },
+];
+const ACCESSIBILITY_OPTS = [
+  { value: "tractor", label: "Tractor" }, { value: "small_machinery", label: "Small machinery" },
+  { value: "hand_tools", label: "Hand tools only" },
+];
+// Spelled-out meaning shown under the control as the fieldworker picks —
+// mirrors the FARMER_FOCUS_DESCRIPTIONS pattern (short label, clear meaning).
+const ACCESSIBILITY_DESCRIPTIONS: Record<Accessibility, string> = {
+  tractor: "Full-size tractor can reach the plot — clear access road, no obstructions",
+  small_machinery: "Only smaller machinery fits — power tiller, mini tractor, etc.",
+  hand_tools: "No machinery access — hand tools only",
+};
+const BENCHMARK_OPTS = [
+  { value: "above", label: "Above average" }, { value: "at", label: "About average" }, { value: "below", label: "Below average" },
+];
+const GRADIENT_OPTS = [
+  { value: "flat", label: "Flat" }, { value: "slight", label: "Slight slope (<5%)" },
+  { value: "significant", label: "Significant slope (>10%)" },
+];
+const WATERLOGGING_OPTS = [
+  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
+];
+const SUNLIGHT_OPTS = [
+  { value: "unobstructed", label: "Unobstructed" }, { value: "partial", label: "Partial (>80%)" }, { value: "low", label: "Low (<75%)" },
+];
+const FENCING_OPTS = [
+  { value: "none", label: "None" }, { value: "natural", label: "Natural" }, { value: "stone_pitch", label: "Stone pitch" },
+  { value: "wire_fence", label: "Wire fence" }, { value: "boundary_wall", label: "Boundary wall" },
+];
+const labelOf = (opts: { value: string; label: string }[], v?: string | null) => opts.find((o) => o.value === v)?.label || null;
+
+// ---- Derived shape/size from a walked boundary (flat-earth approximation, fine at plot scale) ----
+function toLocalXY(points: BoundaryPoint[]) {
+  const R = 6378137;
+  const lat0 = (points[0].lat * Math.PI) / 180;
+  const lng0 = (points[0].lng * Math.PI) / 180;
+  return points.map((p) => {
+    const lat = (p.lat * Math.PI) / 180;
+    const lng = (p.lng * Math.PI) / 180;
+    return { x: R * (lng - lng0) * Math.cos(lat0), y: R * (lat - lat0) };
+  });
+}
+
+function polygonAreaSqM(points: BoundaryPoint[]): number | null {
+  if (points.length < 3) return null;
+  const xy = toLocalXY(points);
+  let sum = 0;
+  for (let i = 0; i < xy.length; i++) {
+    const a = xy[i], b = xy[(i + 1) % xy.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+function classifyShape(points: BoundaryPoint[]): FarmShape | null {
+  if (points.length < 3) return null;
+  if (points.length !== 4) return points.length === 3 ? "trapezoid" : "irregular";
+  const xy = toLocalXY(points);
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  const [p0, p1, p2, p3] = xy;
+  const s0 = dist(p0, p1), s1 = dist(p1, p2), s2 = dist(p2, p3), s3 = dist(p3, p0);
+  const closeEnough = (a: number, b: number) => Math.abs(a - b) / Math.max(a, b, 0.01) < 0.12;
+  if (closeEnough(s0, s2) && closeEnough(s1, s3)) return closeEnough(s0, s1) ? "square" : "rectangle";
+  return "trapezoid";
+}
+
+const SQM_TO_SQFT = 10.7639;
+const SQM_TO_ACRE = 0.000247105;
+// Plot size briefly stored hectares — for the handful of farms saved during
+// that window, convert back to sq ft on read (not retroactively migrated,
+// just read-tolerated).
+const SQFT_PER_HECTARE = 107639.1;
+const legacyHectToSqFt = (hect: number) => Math.round(hect * SQFT_PER_HECTARE);
+
+// ---- Gradient estimate from the boundary walk's GPS altitude readings ----
+// Rough and offline: phone GPS altitude is typically 2-3x noisier than the
+// horizontal fix, so this is a *suggestion* the supervisor can override, not
+// an authoritative reading. Needs at least 2 points with an altitude value
+// and enough horizontal separation between the highest/lowest to be meaningful.
+interface GradientEstimate { gradient: Gradient; percent: number; }
+
+function estimateGradientFromBoundary(points: BoundaryPoint[]): GradientEstimate | null {
+  const withAlt = points.filter((p) => p.alt != null);
+  if (withAlt.length < 2) return null;
+
+  const xy = toLocalXY(points);
+  const altIndexed = points
+    .map((p, i) => ({ alt: p.alt as number, x: xy[i].x, y: xy[i].y }))
+    .filter((p) => p.alt != null);
+
+  let hi = altIndexed[0], lo = altIndexed[0];
+  for (const p of altIndexed) {
+    if (p.alt > hi.alt) hi = p;
+    if (p.alt < lo.alt) lo = p;
+  }
+  const rise = Math.abs(hi.alt - lo.alt);
+  const run = Math.hypot(hi.x - lo.x, hi.y - lo.y);
+  if (run < 3) return null;   // too close together to estimate reliably
+
+  const percent = (rise / run) * 100;
+  const gradient: Gradient = percent < 2 ? "flat" : percent <= 10 ? "slight" : "significant";
+  return { gradient, percent: Math.round(percent * 10) / 10 };
+}
 
 const MapLoading = ({ height = 320 }: { height?: number }) => (
   <Box style={{ height, width: "100%", borderRadius: 8, overflow: "hidden" }}>
@@ -193,7 +352,12 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
               <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                 <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
+                  <Group gap={6} wrap="nowrap">
+                    <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
+                    {(p.waterTDS != null || p.soilTexture) && (
+                      <Badge size="xs" variant="light" color="teal">tested</Badge>
+                    )}
+                  </Group>
                   <Text size="xs" c="dimmed">Plot {p.seq}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
                 </div>
                 <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
@@ -408,11 +572,69 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {plots.map((p) => (
-                <Text key={p.id} size="xs" c="dimmed">Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
+                <Text key={p.id} size="xs" c="dimmed">
+                  Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}
+                  {p.waterTDS != null ? ` · TDS ${p.waterTDS}ppm` : ""}
+                  {p.soilTexture ? ` · soil ${p.soilTexture.clayPct ?? "—"}/${p.soilTexture.sandPct ?? "—"}/${p.soilTexture.siltPct ?? "—"}` : ""}
+                </Text>
               ))}
             </Stack>
           )}
         </Paper>
+
+        {(farm.treeCountBig != null || farm.treeCountSmall != null || farm.mobileCoverage || farm.shapeOverride || farm.plotSizeHectOverride != null || farm.plotSizeSqFtOverride != null) && (
+          <Paper withBorder radius="md" p="sm">
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><MapPinLine size={16} /> Physical fieldwork</Group></Text>
+            <Stack gap={2}>
+              {(farm.treeCountBig != null || farm.treeCountSmall != null) && (
+                <Text size="xs" c="dimmed">Trees: {farm.treeCountBig ?? 0} big · {farm.treeCountSmall ?? 0} small</Text>
+              )}
+              {farm.mobileCoverage && <Text size="xs" c="dimmed">Mobile coverage: {labelOf(MOBILE_COVERAGE_OPTS, farm.mobileCoverage)}</Text>}
+              {farm.shapeOverride && <Text size="xs" c="dimmed">Shape: {SHAPE_LABEL[farm.shapeOverride]}</Text>}
+              {(farm.plotSizeSqFtOverride != null || farm.plotSizeHectOverride != null) && (
+                <Text size="xs" c="dimmed">
+                  Plot size: {(farm.plotSizeSqFtOverride ?? legacyHectToSqFt(farm.plotSizeHectOverride!)).toLocaleString()} sq ft
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+        )}
+
+        {(farm.farmerFocus || asWaterSourceArray(farm.waterSource).length || farm.irrigationAvailable || (farm.seasonsPossible?.length) || (farm.knownIssues?.length) ||
+          farm.previousCrop || farm.previousCropProduction || (farm.animalPressure?.length) || farm.accessibility) && (
+          <Paper withBorder radius="md" p="sm">
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Users size={16} /> From farmer</Group></Text>
+            <Stack gap={2}>
+              {farm.farmerFocus && <Text size="xs" c="dimmed">{FARMER_FOCUS_DESCRIPTIONS[farm.farmerFocus]}</Text>}
+              {!!asWaterSourceArray(farm.waterSource).length && <Text size="xs" c="dimmed">Water source: {asWaterSourceArray(farm.waterSource).map((s) => labelOf(WATER_SOURCE_OPTS, s)).join(", ")}</Text>}
+              {farm.irrigationAvailable && <Text size="xs" c="dimmed">Irrigation: {labelOf(IRRIGATION_OPTS, farm.irrigationAvailable)}</Text>}
+              {!!farm.seasonsPossible?.length && <Text size="xs" c="dimmed">Seasons: {farm.seasonsPossible.map((s) => labelOf(SEASON_OPTS, s)).join(", ")}</Text>}
+              {!!farm.knownIssues?.length && <Text size="xs" c="dimmed">Known issues: {farm.knownIssues.map((s) => labelOf(KNOWN_ISSUE_OPTS, s)).join(", ")}</Text>}
+              {!!farm.animalPressure?.length && <Text size="xs" c="dimmed">Animal pressure: {farm.animalPressure.map((s) => labelOf(ANIMAL_PRESSURE_OPTS, s)).join(", ")}</Text>}
+              {farm.accessibility && <Text size="xs" c="dimmed">{ACCESSIBILITY_DESCRIPTIONS[farm.accessibility]}</Text>}
+              {farm.previousCrop && <Text size="xs" c="dimmed">Previous crop: {farm.previousCrop}</Text>}
+              {farm.previousCropProduction && (
+                <Text size="xs" c="dimmed">
+                  Previous yield: {farm.previousCropProduction.quintals ?? "—"} quintals
+                  {farm.previousCropProduction.vsBenchmark ? ` (${labelOf(BENCHMARK_OPTS, farm.previousCropProduction.vsBenchmark)})` : ""}
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+        )}
+
+        {(farm.gradient || farm.waterloggingProbability || farm.sunlightAvailability || farm.fencingAvailability) && (
+          <Paper withBorder radius="md" p="sm">
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><TrendUp size={16} /> Supervisor observation</Group></Text>
+            <Stack gap={2}>
+              {farm.gradient && <Text size="xs" c="dimmed">Gradient: {labelOf(GRADIENT_OPTS, farm.gradient)}</Text>}
+              {farm.waterloggingProbability && <Text size="xs" c="dimmed">Waterlogging probability: {labelOf(WATERLOGGING_OPTS, farm.waterloggingProbability)}</Text>}
+              {farm.sunlightAvailability && <Text size="xs" c="dimmed">Sunlight: {labelOf(SUNLIGHT_OPTS, farm.sunlightAvailability)}</Text>}
+              {farm.fencingAvailability && <Text size="xs" c="dimmed">Fencing: {labelOf(FENCING_OPTS, farm.fencingAvailability)}</Text>}
+            </Stack>
+          </Paper>
+        )}
+
 
         <Paper withBorder radius="md" p="sm">
           <Text size="sm" fw={500} mb={6}>
@@ -423,7 +645,9 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {[...samples].sort((a, b) => b.createdAt - a.createdAt).map((s) => (
-                <Text key={s.id} size="xs" c="dimmed">{s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · previous: ${s.pastCrops}` : ""}</Text>
+                <Text key={s.id} size="xs" c="dimmed">
+                  {s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · previous: ${s.pastCrops}` : ""}
+                </Text>
               ))}
             </Stack>
           )}
@@ -527,7 +751,7 @@ function BoundaryCapture({
         targetAccuracy: 10, maxWait: 20000,
         onProgress: (p) => setLive(Math.round(p.accuracy)),
       });
-      onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at }]);
+      onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at, alt: l.alt ?? null, altAccuracy: l.altAccuracy ?? null }]);
     } catch (e: any) {
       notifications.show({ color: "red", message: e?.message || "Could not get location" });
     } finally {
@@ -654,10 +878,112 @@ function AddFarmModal(
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // ---- Physical Fieldwork ----
+  const [treeCountBig, setTreeCountBig] = useState<number | "">("");
+  const [treeCountSmall, setTreeCountSmall] = useState<number | "">("");
+  const [mobileCoverage, setMobileCoverage] = useState<MobileCoverage | "">("");
+  const [shapeOverride, setShapeOverride] = useState<FarmShape | "">("");
+  const [plotSizeOverride, setPlotSizeOverride] = useState<number | "">("");
+
+  // ---- From Farmer ----
+  const [farmerFocus, setFarmerFocus] = useState<FarmerFocus | "">("");
+  const [waterSource, setWaterSource] = useState<WaterSource[]>([]);
+  const [irrigationAvailable, setIrrigationAvailable] = useState<IrrigationAvailable | "">("");
+  const [seasonsPossible, setSeasonsPossible] = useState<Season[]>([]);
+  const [knownIssues, setKnownIssues] = useState<KnownIssue[]>([]);
+  const [previousCrop, setPreviousCrop] = useState("");
+  const [prevCropQuintals, setPrevCropQuintals] = useState<number | "">("");
+  const [prevCropBenchmark, setPrevCropBenchmark] = useState<BenchmarkComparison | "">("");
+  const [animalPressure, setAnimalPressure] = useState<AnimalPressure[]>([]);
+  const [accessibility, setAccessibility] = useState<Accessibility | "">("");
+
+  // ---- Supervisor Observation ----
+  const [gradient, setGradient] = useState<Gradient | "">("");
+  const [waterloggingProbability, setWaterloggingProbability] = useState<WaterloggingProbability | "">("");
+  const [sunlightAvailability, setSunlightAvailability] = useState<SunlightAvailability | "">("");
+  const [fencingAvailability, setFencingAvailability] = useState<FencingAvailability | "">("");
+
   const existingPhoto = useLiveQuery(
     () => (editFarm?.photoId ? db.media.get(editFarm.photoId) : undefined),
     [editFarm?.photoId]
   );
+  // Derived shape/size from the walked boundary — auto-fills once there's a
+  // boundary to compute from, but the field always stays enabled and
+  // editable so a supervisor can fill it in by hand when no boundary was
+  // walked (or override the auto-detected value).
+  const derivedShape = classifyShape(boundary);
+  const shapeTouched = useRef(false);
+  useEffect(() => {
+    if (!opened) return;
+    shapeTouched.current = !!editFarm?.shapeOverride;
+  }, [opened, editFarm]);
+  useEffect(() => {
+    if (boundary.length < 3 || shapeTouched.current) return;
+    setShapeOverride(derivedShape ?? "");
+  }, [boundary, derivedShape]);
+  const derivedAreaSqM = polygonAreaSqM(boundary);
+  const derivedSqFt = derivedAreaSqM != null ? Math.round(derivedAreaSqM * SQM_TO_SQFT) : null;
+  const derivedAcres = derivedAreaSqM != null ? +(derivedAreaSqM * SQM_TO_ACRE).toFixed(2) : null;
+  // Plot size auto-fills from the boundary's computed area (same "suggest,
+  // don't lock" pattern as Shape/Gradient) but stays editable — a supervisor
+  // can type it directly when no boundary was walked, or override the
+  // computed value once they've touched the field.
+  const plotSizeTouched = useRef(false);
+  useEffect(() => {
+    if (!opened) return;
+    plotSizeTouched.current = editFarm?.plotSizeSqFtOverride != null || editFarm?.plotSizeHectOverride != null;
+  }, [opened, editFarm]);
+  useEffect(() => {
+    if (plotSizeTouched.current) return;
+    setPlotSizeOverride(derivedSqFt ?? "");
+  }, [derivedSqFt]);
+
+  // Gradient suggestion from the boundary walk. We try real elevation data
+  // from Google's Elevation API first (far more accurate than phone GPS
+  // altitude) the moment the boundary has 3+ points, and silently fall back
+  // to the GPS-altitude estimate if we're offline or the lookup fails — the
+  // supervisor never sees an error, just a slightly less precise suggestion.
+  const [apiElevations, setApiElevations] = useState<ElevationPoint[] | null>(null);
+  const [elevationLoading, setElevationLoading] = useState(false);
+  const elevationBoundaryKey = useMemo(
+    () => boundary.map((p) => `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`).join("|"),
+    [boundary]
+  );
+  useEffect(() => {
+    if (boundary.length < 3) { setApiElevations(null); return; }
+    let cancelled = false;
+    setElevationLoading(true);
+    const session = getSession();
+    if (!session) { setElevationLoading(false); return; }
+    apiElevation(session.token, boundary.map((p) => ({ lat: p.lat, lng: p.lng })))
+      .then((r) => { if (!cancelled) setApiElevations(r.elevations ?? null); })
+      .catch(() => { if (!cancelled) setApiElevations(null); })   // offline/flaky — GPS fallback below covers it
+      .finally(() => { if (!cancelled) setElevationLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elevationBoundaryKey]);
+
+  // Overlay live elevation onto the boundary (matched by request order — the
+  // Elevation API returns one result per input point, same order) so the
+  // existing altitude-spread math works unchanged with the better data.
+  const boundaryForGradient = useMemo<BoundaryPoint[]>(() => {
+    if (!apiElevations || apiElevations.length !== boundary.length) return boundary;
+    return boundary.map((p, i) => ({ ...p, alt: apiElevations[i].elevation }));
+  }, [boundary, apiElevations]);
+  const usingApiElevation = !!apiElevations && apiElevations.length === boundary.length;
+
+  const gradientTouched = useRef(false);
+  const gradientEstimate = useMemo(() => estimateGradientFromBoundary(boundaryForGradient), [boundaryForGradient]);
+  useEffect(() => {
+    if (!opened) return;
+    // A farm being edited that already has a saved gradient counts as
+    // "touched" — don't silently overwrite a value someone already confirmed.
+    gradientTouched.current = !!editFarm?.gradient;
+  }, [opened, editFarm]);
+  useEffect(() => {
+    if (gradientTouched.current || !gradientEstimate) return;
+    setGradient(gradientEstimate.gradient);
+  }, [gradientEstimate]);
 
   // Prefill (edit) or clear (add) whenever the modal opens.
   useEffect(() => {
@@ -669,8 +995,33 @@ function AddFarmModal(
         : null);
       setBoundary(editFarm.boundary ?? []);
       setNote(editFarm.note ?? "");
+      setTreeCountBig(editFarm.treeCountBig ?? "");
+      setTreeCountSmall(editFarm.treeCountSmall ?? "");
+      setMobileCoverage(editFarm.mobileCoverage ?? "");
+      setShapeOverride(editFarm.shapeOverride ?? "");
+      setPlotSizeOverride(editFarm.plotSizeSqFtOverride ?? (editFarm.plotSizeHectOverride != null ? legacyHectToSqFt(editFarm.plotSizeHectOverride) : ""));
+      setFarmerFocus(editFarm.farmerFocus ?? "");
+      setWaterSource(asWaterSourceArray(editFarm.waterSource));
+      setIrrigationAvailable(editFarm.irrigationAvailable ?? "");
+      setSeasonsPossible(editFarm.seasonsPossible ?? []);
+      setKnownIssues(editFarm.knownIssues ?? []);
+      setPreviousCrop(editFarm.previousCrop ?? "");
+      setPrevCropQuintals(editFarm.previousCropProduction?.quintals ?? "");
+      setPrevCropBenchmark(editFarm.previousCropProduction?.vsBenchmark ?? "");
+      setAnimalPressure(editFarm.animalPressure ?? []);
+      setAccessibility(editFarm.accessibility ?? "");
+      setGradient(editFarm.gradient ?? "");
+      setWaterloggingProbability(editFarm.waterloggingProbability ?? "");
+      setSunlightAvailability(editFarm.sunlightAvailability ?? "");
+      setFencingAvailability(editFarm.fencingAvailability ?? "");
     } else {
       setPhoto(null); setLoc(null); setBoundary([]); setNote("");
+      setTreeCountBig(""); setTreeCountSmall(""); setMobileCoverage("");
+      setShapeOverride(""); setPlotSizeOverride("");
+      setFarmerFocus(""); setWaterSource([]); setIrrigationAvailable("");
+      setSeasonsPossible([]); setKnownIssues([]); setPreviousCrop("");
+      setPrevCropQuintals(""); setPrevCropBenchmark(""); setAnimalPressure([]); setAccessibility("");
+      setGradient(""); setWaterloggingProbability(""); setSunlightAvailability(""); setFencingAvailability("");
     }
   }, [opened, editFarm]);
 
@@ -683,6 +1034,35 @@ function AddFarmModal(
     setSaving(true);
     try {
       const now = Date.now();
+
+      const previousCropProduction: PreviousCropProduction | null =
+        prevCropQuintals !== "" || prevCropBenchmark !== ""
+          ? { quintals: prevCropQuintals === "" ? null : Number(prevCropQuintals), vsBenchmark: prevCropBenchmark || null }
+          : null;
+
+      // Fields shared by the From Farmer / Supervisor Observation / Physical
+      // Fieldwork sections — spread into both the add and edit payloads below.
+      const attrFields = {
+        treeCountBig: treeCountBig === "" ? null : Number(treeCountBig),
+        treeCountSmall: treeCountSmall === "" ? null : Number(treeCountSmall),
+        mobileCoverage: (mobileCoverage || null) as MobileCoverage | null,
+        shapeOverride: (shapeOverride || null) as FarmShape | null,
+        plotSizeSqFtOverride: plotSizeOverride === "" ? null : Number(plotSizeOverride),
+        farmerFocus: (farmerFocus || null) as FarmerFocus | null,
+        waterSource,
+        irrigationAvailable: (irrigationAvailable || null) as IrrigationAvailable | null,
+        seasonsPossible,
+        knownIssues,
+        previousCrop: previousCrop.trim() || undefined,
+        previousCropProduction,
+        animalPressure,
+        accessibility: (accessibility || null) as Accessibility | null,
+        gradient: (gradient || null) as Gradient | null,
+        waterloggingProbability: (waterloggingProbability || null) as WaterloggingProbability | null,
+        sunlightAvailability: (sunlightAvailability || null) as SunlightAvailability | null,
+        fencingAvailability: (fencingAvailability || null) as FencingAvailability | null,
+      };
+
       if (editFarm) {
         let photoId = editFarm.photoId;
         if (photoDirty) {
@@ -693,6 +1073,7 @@ function AddFarmModal(
         await db.farms.update(editFarm.id, {
           photoId, lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
+          ...attrFields,
           updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
@@ -705,6 +1086,7 @@ function AddFarmModal(
           id, farmerId, villageCode, photoId,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
+          ...attrFields,
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
@@ -722,7 +1104,7 @@ function AddFarmModal(
 
   return (
     <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.id}` : "Add farm"}>
-      <Stack gap="md">
+      <Stack gap="xl">
         {/* Save stays pinned at the top so the map (Draw mode) never buries it. */}
         <Box
           style={{
@@ -736,15 +1118,190 @@ function AddFarmModal(
           </Button>
         </Box>
         <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
-        <LocationCapture loc={loc} onCapture={setLoc} />
-        <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
-        <Textarea
-          label="Note (optional)" placeholder="Any note about this farm…"
-          value={note} onChange={(e) => setNote(e.currentTarget.value)}
-          autosize minRows={2} maxRows={5}
-        />
+
+        <Stack gap="sm">
+          <SectionDivider icon={<MapPinLine size={14} />} label="Physical fieldwork" />
+          <LocationCapture loc={loc} onCapture={setLoc} />
+          <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
+          <SimpleGridTwo>
+            <NumberInput label="Big trees" min={0} leftSection={<Tree size={16} />}
+              value={treeCountBig} onChange={(v) => setTreeCountBig(v as number | "")} />
+            <NumberInput label="Small trees" min={0} leftSection={<Tree size={16} />}
+              value={treeCountSmall} onChange={(v) => setTreeCountSmall(v as number | "")} />
+          </SimpleGridTwo>
+          <div>
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><DeviceMobile size={16} /> Mobile network coverage</Group></Text>
+            <SegmentedControl fullWidth value={mobileCoverage} onChange={(v) => setMobileCoverage(v as MobileCoverage)} data={MOBILE_COVERAGE_OPTS} />
+          </div>
+
+          {/* Auto-computed from the boundary walk — grouped in its own card so it
+              reads as "the system filled this in", distinct from the fields above. */}
+          <Paper withBorder radius="md" p="sm" bg="gray.0">
+            <Stack gap="sm">
+              <div>
+                <Select
+                  label="Shape" clearable
+                  placeholder="Select, or walk 3+ boundary points to auto-detect"
+                  data={SHAPE_OPTS}
+                  value={shapeOverride || null}
+                  onChange={(v) => { shapeTouched.current = true; setShapeOverride((v as FarmShape) || ""); }}
+                  comboboxProps={{ withinPortal: true }}
+                />
+                {boundary.length >= 3 && !shapeTouched.current && derivedShape && (
+                  <Text size="xs" c="dimmed" mt={4}>Auto-detected from boundary — tap to override</Text>
+                )}
+              </div>
+              <div>
+                <NumberInput
+                  label="Plot size (sq ft)" min={0}
+                  placeholder="Enter size, or walk 3+ boundary points to auto-fill"
+                  value={plotSizeOverride}
+                  onChange={(v) => { plotSizeTouched.current = true; setPlotSizeOverride(v as number | ""); }}
+                />
+                {derivedAcres != null && !plotSizeTouched.current && (
+                  <Text size="xs" c="dimmed" mt={4}>≈ {derivedAcres} acre — auto-filled from boundary, tap to override</Text>
+                )}
+              </div>
+            </Stack>
+          </Paper>
+        </Stack>
+
+        <Stack gap="sm">
+          <SectionDivider icon={<Users size={14} />} label="From farmer" />
+          <div>
+            <Text size="sm" fw={500} mb={6}>Supervisor visit frequency</Text>
+            <SegmentedControl fullWidth value={farmerFocus} onChange={(v) => setFarmerFocus(v as FarmerFocus)} data={FARMER_FOCUS_OPTS} />
+            <Text size="xs" c="dimmed" mt={4}>
+              {farmerFocus ? FARMER_FOCUS_DESCRIPTIONS[farmerFocus] : "How often does the supervisor need to check in on this farm?"}
+            </Text>
+          </div>
+          <div>
+            <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Water source</Group></Text>
+              <SelectAllToggle options={WATER_SOURCE_OPTS.map((o) => o.value as WaterSource)} value={waterSource} onChange={setWaterSource} />
+            </Group>
+            <MultiSelect placeholder="Select all that apply"
+              data={WATER_SOURCE_OPTS} value={waterSource} onChange={(v) => setWaterSource(v as WaterSource[])} comboboxProps={{ withinPortal: true }} />
+          </div>
+          <Select label="Irrigation available" placeholder="Select" clearable leftSection={<Drop size={16} />}
+            data={IRRIGATION_OPTS} value={irrigationAvailable || null} onChange={(v) => setIrrigationAvailable((v as IrrigationAvailable) || "")} comboboxProps={{ withinPortal: true }} />
+          <MultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
+            data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
+          <MultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
+            data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
+          <div>
+            <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
+              <Text size="sm" fw={500}><Group gap={6} component="span"><PawPrint size={16} /> Animal pressure</Group></Text>
+              <SelectAllToggle options={ANIMAL_PRESSURE_OPTS.map((o) => o.value as AnimalPressure)} value={animalPressure} onChange={setAnimalPressure} />
+            </Group>
+            <MultiSelect placeholder="Select all that apply"
+              data={ANIMAL_PRESSURE_OPTS} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
+          </div>
+          <div>
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Tractor size={16} /> Accessibility</Group></Text>
+            <SegmentedControl fullWidth value={accessibility} onChange={(v) => setAccessibility(v as Accessibility)} data={ACCESSIBILITY_OPTS} />
+            <Text size="xs" c="dimmed" mt={4}>
+              {accessibility ? ACCESSIBILITY_DESCRIPTIONS[accessibility] : "What can physically get onto this plot?"}
+            </Text>
+          </div>
+          <Autocomplete
+            label="Previous crop" placeholder="Select or type previous crop" leftSection={<Plant size={16} />}
+            data={PREVIOUS_CROPS} value={previousCrop} onChange={setPreviousCrop} comboboxProps={{ withinPortal: true }}
+          />
+          <SimpleGridTwo>
+            <NumberInput label="Yield (quintals)" min={0} value={prevCropQuintals} onChange={(v) => setPrevCropQuintals(v as number | "")} />
+            <Select label="vs. benchmark" placeholder="Select" clearable data={BENCHMARK_OPTS}
+              value={prevCropBenchmark || null} onChange={(v) => setPrevCropBenchmark((v as BenchmarkComparison) || "")} comboboxProps={{ withinPortal: true }} />
+          </SimpleGridTwo>
+        </Stack>
+
+        <Stack gap="sm">
+          <SectionDivider icon={<PencilSimple size={14} />} label="Supervisor observation" />
+          <SimpleGridTwo>
+            <div>
+              <Select
+                label="Gradient" leftSection={<TrendUp size={16} />}
+                clearable
+                placeholder="Select, or walk 3+ boundary points to auto-detect"
+                data={GRADIENT_OPTS} value={gradient || null}
+                onChange={(v) => { gradientTouched.current = true; setGradient((v as Gradient) || ""); }}
+                comboboxProps={{ withinPortal: true }} />
+              {!gradientTouched.current && elevationLoading && boundary.length >= 3 && !gradientEstimate && (
+                <Text size="xs" c="dimmed" mt={4}>Fetching elevation data…</Text>
+              )}
+              {boundary.length >= 3 && !gradientTouched.current && gradientEstimate && (
+                <Text size="xs" c="dimmed" mt={4}>
+                  Auto-filled ~{gradientEstimate.percent}% from {usingApiElevation ? "Google elevation data" : "boundary GPS altitude"} — tap to override
+                </Text>
+              )}
+            </div>
+            <Select label="Waterlogging risk" placeholder="Select" leftSection={<Drop size={16} />} clearable
+              data={WATERLOGGING_OPTS} value={waterloggingProbability || null} onChange={(v) => setWaterloggingProbability((v as WaterloggingProbability) || "")} comboboxProps={{ withinPortal: true }} />
+          </SimpleGridTwo>
+          <SimpleGridTwo>
+            <Select label="Sunlight availability" placeholder="Select" leftSection={<Sun size={16} />} clearable
+              data={SUNLIGHT_OPTS} value={sunlightAvailability || null} onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+            <Select label="Fencing availability" placeholder="Select" leftSection={<Shield size={16} />} clearable
+              data={FENCING_OPTS} value={fencingAvailability || null} onChange={(v) => setFencingAvailability((v as FencingAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+          </SimpleGridTwo>
+        </Stack>
+
+        <Stack gap="sm">
+          <Divider />
+          <Textarea
+            label="Note (optional)" placeholder="Any note about this farm…"
+            value={note} onChange={(e) => setNote(e.currentTarget.value)}
+            autosize minRows={2} maxRows={5}
+          />
+        </Stack>
+
+        {/* Also available at the bottom so saving never means scrolling back
+            up — same action as the pinned button at the top. */}
+        <Button fullWidth size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
+          {editFarm ? "Update farm" : "Save farm"}
+        </Button>
       </Stack>
     </AppModal>
+  );
+}
+
+// Two-column layout for paired fields — a thin wrapper so the sections above
+// stay readable without repeating the SimpleGrid props each time.
+function SimpleGridTwo({ children }: { children: ReactNode }) {
+  return <SimpleGrid cols={2} spacing="sm">{children}</SimpleGrid>;
+}
+
+// Section heading for a group of related fields — a small icon badge + an
+// uppercase label gives each block a clear visual anchor, so the eye can
+// scan section-to-section instead of field-to-field.
+function SectionDivider({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <Divider
+      label={
+        <Group gap={8} wrap="nowrap">
+          <ThemeIcon size={22} radius="xl" variant="light" color="green">{icon}</ThemeIcon>
+          <Text size="sm" fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: 0.4 }}>{label}</Text>
+        </Group>
+      }
+      labelPosition="left"
+    />
+  );
+}
+
+// "Select all" as a small text toggle next to a MultiSelect's label — reads
+// clearly as an action (unlike a bare Checkbox, which at this size renders
+// as an unlabeled dot). Flips to "Clear" once everything is selected.
+function SelectAllToggle<T extends string>(
+  { options, value, onChange }: { options: T[]; value: T[]; onChange: (v: T[]) => void }
+) {
+  const allSelected = options.length > 0 && value.length === options.length;
+  return (
+    <UnstyledButton onClick={() => onChange(allSelected ? [] : options)}>
+      <Text size="xs" fw={600} c={allSelected ? "gray.6" : "green.7"}
+        style={{ textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>
+        {allSelected ? "Clear" : "Select all"}
+      </Text>
+    </UnstyledButton>
   );
 }
 
@@ -765,6 +1322,24 @@ function AddPlotModal(
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // ---- Tests ----
+  // Two independent tests, both live on the plot (not the farm or the soil
+  // sample) — different plots on the same farm can read differently, and
+  // either can be recorded whether or not a soil sample was ever taken.
+  const [waterTDS, setWaterTDS] = useState<number | "">("");
+  const [clayPct, setClayPct] = useState<number | "">("");
+  const [sandPct, setSandPct] = useState<number | "">("");
+  const [siltPct, setSiltPct] = useState<number | "">("");
+  const [reportPhoto, setReportPhoto] = useState<Blob | null>(null);
+  const [reportDirty, setReportDirty] = useState(false);
+  const textureTotal = [clayPct, sandPct, siltPct].reduce((sum: number, v) => sum + (v === "" ? 0 : Number(v)), 0);
+  const anyTexture = clayPct !== "" || sandPct !== "" || siltPct !== "";
+
+  const existingReport = useLiveQuery(
+    () => (editPlot?.testReportMediaId ? db.media.get(editPlot.testReportMediaId) : undefined),
+    [editPlot?.testReportMediaId]
+  );
+
   // Prefill (edit) or reset (add) each time the modal opens.
   useEffect(() => {
     if (!opened) return;
@@ -774,34 +1349,64 @@ function AddPlotModal(
       setLoc(editPlot.lat != null && editPlot.lng != null
         ? { lat: editPlot.lat, lng: editPlot.lng, accuracy: editPlot.accuracy ?? 0, at: editPlot.updatedAt }
         : null);
+      setWaterTDS(editPlot.waterTDS ?? "");
+      setReportDirty(false);
+      setClayPct(editPlot.soilTexture?.clayPct ?? "");
+      setSandPct(editPlot.soilTexture?.sandPct ?? "");
+      setSiltPct(editPlot.soilTexture?.siltPct ?? "");
     } else {
       setCrop(""); setSowingDate(todayISO()); setLoc(null);
+      setWaterTDS(""); setReportDirty(false); setReportPhoto(null);
+      setClayPct(""); setSandPct(""); setSiltPct("");
     }
   }, [opened, editPlot]);
+
+  // Load the existing test report photo (edit mode), unless a new one was picked.
+  useEffect(() => {
+    if (opened && editPlot && !reportDirty && existingReport?.blob) setReportPhoto(existingReport.blob);
+  }, [opened, editPlot, existingReport, reportDirty]);
 
   const save = async () => {
     setSaving(true);
     try {
       const now = Date.now();
+      const soilTexture: SoilTexture | null = anyTexture
+        ? { clayPct: clayPct === "" ? null : Number(clayPct), sandPct: sandPct === "" ? null : Number(sandPct), siltPct: siltPct === "" ? null : Number(siltPct) }
+        : null;
+      const testFields = {
+        waterTDS: waterTDS === "" ? null : Number(waterTDS),
+        soilTexture,
+      };
       if (editPlot) {
+        let testReportMediaId = editPlot.testReportMediaId ?? null;
+        if (reportDirty) {
+          if (testReportMediaId) await db.media.delete(testReportMediaId).catch(() => {});
+          if (reportPhoto) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: reportPhoto, createdAt: now, synced: false }); }
+          else testReportMediaId = null;
+        }
         await db.plots.update(editPlot.id, {
           crop: crop.trim(), sowingDate: sowingDate || undefined,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          testReportMediaId, ...testFields,
           updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Plot ${editPlot.seq} updated` });
       } else {
         const { id, seq } = await nextPlotId(farm.id);
+        let testReportMediaId: string | null = null;
+        if (reportPhoto) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: reportPhoto, createdAt: now, synced: false }); }
         await db.plots.add({
           id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
           sowingDate: sowingDate || undefined,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          testReportMediaId, ...testFields,
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Plot ${seq} added` });
       }
+      setReportDirty(false);
       onClose();
       syncNow().catch(() => {});
     } finally {
@@ -834,6 +1439,25 @@ function AddPlotModal(
           onChange={(e) => setSowingDate(e.currentTarget.value)}
           leftSection={<CalendarBlank size={16} />}
         />
+
+        <Divider label={<Group gap={6}><Flask size={14} /> Tests</Group>} labelPosition="left" />
+        <NumberInput label="Water TDS (ppm)" placeholder="Enter TDS reading" min={0}
+          leftSection={<Drop size={16} />} value={waterTDS} onChange={(v) => setWaterTDS(v as number | "")} />
+        <div>
+          <Text size="sm" fw={500} mb={6}>Soil type</Text>
+          <SimpleGrid cols={3} spacing="xs">
+            <NumberInput label="Clay %" min={0} max={100} value={clayPct} onChange={(v) => setClayPct(v as number | "")} />
+            <NumberInput label="Sand %" min={0} max={100} value={sandPct} onChange={(v) => setSandPct(v as number | "")} />
+            <NumberInput label="Silt %" min={0} max={100} value={siltPct} onChange={(v) => setSiltPct(v as number | "")} />
+          </SimpleGrid>
+          {anyTexture && (
+            <Text size="xs" c={textureTotal === 100 ? "dimmed" : "orange"} mt={4}>
+              Total: {textureTotal}% {textureTotal !== 100 ? "(should add up to 100%)" : ""}
+            </Text>
+          )}
+        </div>
+        <PhotoInput label="Test report (photo/scan, optional)" value={reportPhoto} onChange={(b) => { setReportPhoto(b); setReportDirty(true); }} height={140} />
+
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>
           {editPlot ? "Update plot" : "Save plot"}
         </Button>

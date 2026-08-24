@@ -13,6 +13,8 @@ export function getCurrentLocation(opts?: PositionOptions): Promise<SessionLocat
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
           at: Date.now(),
+          alt: pos.coords.altitude,
+          altAccuracy: pos.coords.altitudeAccuracy,
         }),
       (err) => reject(err),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000, ...opts }
@@ -68,6 +70,8 @@ export function getBestLocation(opts: BestLocationOpts = {}): Promise<SessionLoc
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
           at: Date.now(),
+          alt: pos.coords.altitude,
+          altAccuracy: pos.coords.altitudeAccuracy,
         };
         if (!best || l.accuracy < best.accuracy) {
           best = l;

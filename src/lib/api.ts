@@ -58,3 +58,18 @@ export const apiPresignMedia = (
   mimeType: string
 ): Promise<{ uploadUrl: string; s3Key: string }> =>
   req("/api/media/presign", { method: "POST", body: JSON.stringify({ token, mediaId, mimeType }) });
+
+// Elevation lookup — proxied through our backend so the Google Maps API key
+// never ships to the client. Used to auto-fetch real elevation data for a
+// farm boundary's corners (falls back to GPS altitude if this fails/offline).
+export interface ElevationPoint {
+  lat: number;
+  lng: number;
+  elevation: number;
+  resolution?: number | null;
+}
+export const apiElevation = (
+  token: string,
+  points: { lat: number; lng: number }[]
+): Promise<{ elevations: ElevationPoint[] }> =>
+  req("/api/elevation", { method: "POST", body: JSON.stringify({ token, points }) }, 8000);

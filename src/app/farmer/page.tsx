@@ -38,7 +38,11 @@ function FarmerInner() {
 
   const farmer = useLiveQuery(async () => {
     const f = await db.farmers.get(id);
-    return f?.deleted ? null : f;
+    // Distinguish "not found / deleted" (null) from "query hasn't resolved
+    // yet" (undefined, the useLiveQuery default) — otherwise a missing id
+    // looks identical to still-loading and the page spins forever below.
+    if (!f || f.deleted) return null;
+    return f;
   }, [id]);
   const farmCount = useLiveQuery(async () => (await db.farms.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
   const plotCount = useLiveQuery(async () => (await db.plots.where("farmerId").equals(id).toArray()).filter((x) => !x.deleted).length, [id]) ?? 0;
