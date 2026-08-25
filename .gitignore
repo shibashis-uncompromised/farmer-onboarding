@@ -7,3 +7,9 @@ out/
 .vercel
 next-env.d.ts
 *.tsbuildinfo
+
+# Yarn (this project uses npm — ignore any local Yarn artifacts)
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
+yarn.lock

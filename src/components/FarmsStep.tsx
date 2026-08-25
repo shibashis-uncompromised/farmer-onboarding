@@ -24,7 +24,7 @@ import { useSession } from "@/providers/SessionGate";
 import { getSession } from "@/lib/session";
 import { apiElevation, type ElevationPoint } from "@/lib/api";
 import type {
-  Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample, SoilTexture,
+  Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample, SoilTextureTest, WaterTDSTest,
   MobileCoverage, FarmShape, FarmerFocus, WaterSource, IrrigationAvailable, Season, KnownIssue,
   AnimalPressure, Accessibility, BenchmarkComparison, PreviousCropProduction,
   Gradient, WaterloggingProbability, SunlightAvailability, FencingAvailability,
@@ -73,16 +73,23 @@ const IRRIGATION_OPTS = [
   { value: "none", label: "None" }, { value: "flood", label: "Flood" },
   { value: "sprinkler", label: "Sprinkler" }, { value: "drip", label: "Drip" },
 ];
+// Irrigation Available used to be a single value — tolerate farms saved under
+// that old shape (a bare string) as well as the current array shape, since
+// JSONB rows from before this change aren't retroactively migrated.
+function asIrrigationArray(v: unknown): IrrigationAvailable[] {
+  if (Array.isArray(v)) return v as IrrigationAvailable[];
+  return v ? [v as IrrigationAvailable] : [];
+}
 const SEASON_OPTS = [
   { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" },
 ];
 const KNOWN_ISSUE_OPTS = [
   { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
-  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" },
+  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" }, { value: "other", label: "Other" },
 ];
 const ANIMAL_PRESSURE_OPTS = [
   { value: "nilgai", label: "Nilgai" }, { value: "boar", label: "Boar" }, { value: "monkey", label: "Monkey" },
-  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" },
+  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" }, { value: "other", label: "Other" },
 ];
 const ACCESSIBILITY_OPTS = [
   { value: "tractor", label: "Tractor" }, { value: "small_machinery", label: "Small machinery" },
@@ -241,6 +248,13 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [detailOpen, detailModal] = useDisclosure(false);
   const [manualOpen, manualModal] = useDisclosure(false);
   const [cropOpen, cropModal] = useDisclosure(false);
+  // Soil type (clay/sand/silt) history — a repeatable record per plot, so
+  // tracked per-plot rather than as a single disclosure like the modals above.
+  const [soilTestsPlot, setSoilTestsPlot] = useState<Plot | null>(null);
+  const [addSoilTestPlot, setAddSoilTestPlot] = useState<Plot | null>(null);
+  // Water TDS history — same repeatable-per-plot pattern as soil type tests.
+  const [waterTestsPlot, setWaterTestsPlot] = useState<Plot | null>(null);
+  const [addWaterTestPlot, setAddWaterTestPlot] = useState<Plot | null>(null);
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const url = useMediaUrl(farm.photoId);
   const soilSamples = useLiveQuery(
@@ -347,24 +361,13 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
 
       <Stack gap={6}>
         {plots.map((p) => (
-          <Paper key={p.id} withBorder radius="sm" p={8} bg="gray.0">
-            <UnstyledButton w="100%" onClick={() => setEditPlot(p)} aria-label={`Edit plot ${p.seq}`}>
-              <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <Group gap={6} wrap="nowrap">
-                    <Text size="sm" fw={600} truncate>{p.crop || "—"}</Text>
-                    {(p.waterTDS != null || p.soilTexture) && (
-                      <Badge size="xs" variant="light" color="teal">tested</Badge>
-                    )}
-                  </Group>
-                  <Text size="xs" c="dimmed">Plot {p.seq}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}</Text>
-                </div>
-                <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
-              </Group>
-            </UnstyledButton>
-          </Paper>
-          ))}
+          <PlotRow
+            key={p.id} plot={p}
+            onEdit={() => setEditPlot(p)}
+            onOpenSoilTests={() => setSoilTestsPlot(p)}
+            onOpenWaterTests={() => setWaterTestsPlot(p)}
+          />
+        ))}
       </Stack>
 
       <Group mt="sm" gap={6} grow wrap="nowrap">
@@ -378,7 +381,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         </Button>
         <Button size="xs" variant="light" color="gray" leftSection={<ClockCounterClockwise size={14} />} onClick={samplesModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
-          View samples
+          Samples
         </Button>
       </Group>
 
@@ -390,7 +393,72 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
       <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
+      <SoilTextureTestsModal
+        opened={!!soilTestsPlot} onClose={() => setSoilTestsPlot(null)} plot={soilTestsPlot}
+        onAddTest={() => { const p = soilTestsPlot; setSoilTestsPlot(null); setAddSoilTestPlot(p); }}
+      />
+      <AddSoilTextureTestModal opened={!!addSoilTestPlot} onClose={() => setAddSoilTestPlot(null)} plot={addSoilTestPlot} />
+      <WaterTDSTestsModal
+        opened={!!waterTestsPlot} onClose={() => setWaterTestsPlot(null)} plot={waterTestsPlot}
+        onAddTest={() => { const p = waterTestsPlot; setWaterTestsPlot(null); setAddWaterTestPlot(p); }}
+      />
+      <AddWaterTDSTestModal opened={!!addWaterTestPlot} onClose={() => setAddWaterTestPlot(null)} plot={addWaterTestPlot} />
     </Card>
+  );
+}
+
+// ---- One plot row in a farm's plot list — its own component so the
+// soil-type-test count can be live-queried per plot without breaking the
+// rules of hooks inside a .map(). ----
+function PlotRow(
+  { plot, onEdit, onOpenSoilTests, onOpenWaterTests }:
+  { plot: Plot; onEdit: () => void; onOpenSoilTests: () => void; onOpenWaterTests: () => void }
+) {
+  const soilTests = useLiveQuery(
+    async (): Promise<SoilTextureTest[]> => (await db.soilTextureTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted),
+    [plot.id]
+  );
+  const waterTests = useLiveQuery(
+    async (): Promise<WaterTDSTest[]> => (await db.waterTDSTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted),
+    [plot.id]
+  );
+  const soilTestCount = soilTests?.length ?? 0;
+  const waterTestCount = waterTests?.length ?? 0;
+  return (
+    <Paper withBorder radius="sm" p={8} bg="gray.0">
+      <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+        <UnstyledButton onClick={onEdit} aria-label={`Edit plot ${plot.seq}`} style={{ flex: 1, minWidth: 0 }}>
+          <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+            <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Text size="sm" fw={600} truncate>{plot.crop || "—"}</Text>
+              {(waterTestCount > 0 || soilTestCount > 0) && (
+                <Group gap={4} wrap="wrap" mt={2}>
+                  {waterTestCount > 0 && (
+                    <Badge size="xs" variant="light" color="teal" leftSection={<Drop size={10} weight="fill" />}>
+                      {waterTestCount} water
+                    </Badge>
+                  )}
+                  {soilTestCount > 0 && (
+                    <Badge size="xs" variant="light" color="orange" leftSection={<Flask size={10} weight="fill" />}>
+                      {soilTestCount} soil
+                    </Badge>
+                  )}
+                </Group>
+              )}
+              <Text size="xs" c="dimmed" mt={2} truncate>Plot {plot.seq}{plot.sowingDate ? ` · sown ${plot.sowingDate}` : ""} · {fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
+            </div>
+            <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
+          </Group>
+        </UnstyledButton>
+        <ActionIcon variant="subtle" color="teal" size="md" onClick={onOpenWaterTests} aria-label={`Water TDS tests for plot ${plot.seq}`}>
+          <Drop size={15} />
+        </ActionIcon>
+        <ActionIcon variant="subtle" color="orange" size="md" onClick={onOpenSoilTests} aria-label={`Soil type tests for plot ${plot.seq}`}>
+          <Flask size={15} />
+        </ActionIcon>
+      </Group>
+    </Paper>
   );
 }
 
@@ -459,6 +527,240 @@ function SoilSamplesModal(
   );
 }
 
+// ---- Timeline of soil type (clay/sand/silt) tests taken from a plot ----
+// Soil type keeps full history — like Water TDS (see WaterTDSTestsModal below)
+// — because it's normal to re-test a plot's soil composition over time and
+// each reading should stay on record rather than overwrite the last.
+function SoilTextureTestsModal(
+  { opened, onClose, plot, onAddTest }:
+  { opened: boolean; onClose: () => void; plot: Plot | null; onAddTest: () => void }
+) {
+  const tests = useLiveQuery(
+    async (): Promise<SoilTextureTest[]> => plot ? (await db.soilTextureTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted) : [],
+    [plot?.id]
+  );
+  const sorted = [...(tests || [])].sort((a, b) => b.createdAt - a.createdAt);
+  const fmtWhen = (n: number) =>
+    new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const dayLabel = (n: number) => {
+    const d = new Date(n), t = new Date();
+    const y = new Date(); y.setDate(t.getDate() - 1);
+    const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  return (
+    <AppModal opened={opened} onClose={onClose}
+      title={plot ? `Soil type tests · Plot ${plot.seq}${sorted.length ? ` (${sorted.length})` : ""}` : "Soil type tests"}>
+      <Stack gap="md">
+        {sorted.length === 0 ? (
+          <Stack align="center" gap={6} py="lg">
+            <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
+            <Text c="dimmed" ta="center">No soil type tests yet for this plot</Text>
+            <Text c="dimmed" size="sm">Record clay/sand/silt % each time this plot is tested</Text>
+          </Stack>
+        ) : (
+          <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
+            {sorted.map((t) => (
+              <Timeline.Item key={t.id} bullet={<Flask size={13} weight="fill" />}
+                title={<Group gap={6}>
+                  <Text fw={700} size="sm">
+                    {t.soilTexture.clayPct ?? "—"}/{t.soilTexture.sandPct ?? "—"}/{t.soilTexture.siltPct ?? "—"}
+                  </Text>
+                  {!t.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}
+                </Group>}>
+                <Text size="xs" c="dimmed">{dayLabel(t.createdAt)} · {fmtWhen(t.createdAt)}</Text>
+                <Text size="xs" c="dimmed">Clay {t.soilTexture.clayPct ?? "—"}% · Sand {t.soilTexture.sandPct ?? "—"}% · Silt {t.soilTexture.siltPct ?? "—"}%</Text>
+              </Timeline.Item>
+            ))}
+          </Timeline>
+        )}
+        <Button variant="light" color="orange" leftSection={<Flask size={16} />} onClick={onAddTest} disabled={!plot}>
+          Add test
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Form to record one new soil type (clay/sand/silt) reading for a plot ----
+function AddSoilTextureTestModal(
+  { opened, onClose, plot }:
+  { opened: boolean; onClose: () => void; plot: Plot | null }
+) {
+  const { syncNow } = useSession();
+  const [clayPct, setClayPct] = useState<number | "">("");
+  const [sandPct, setSandPct] = useState<number | "">("");
+  const [siltPct, setSiltPct] = useState<number | "">("");
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [saving, setSaving] = useState(false);
+  const textureTotal = [clayPct, sandPct, siltPct].reduce((sum: number, v) => sum + (v === "" ? 0 : Number(v)), 0);
+  const anyTexture = clayPct !== "" || sandPct !== "" || siltPct !== "";
+
+  useEffect(() => {
+    if (!opened) return;
+    setClayPct(""); setSandPct(""); setSiltPct(""); setPhoto(null);
+  }, [opened]);
+
+  const save = async () => {
+    if (!plot || !anyTexture) return;
+    setSaving(true);
+    try {
+      const now = Date.now();
+      let testReportMediaId: string | null = null;
+      if (photo) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: photo, createdAt: now, synced: false }); }
+      await db.soilTextureTests.add({
+        id: uid(), plotId: plot.id, farmId: plot.farmId, farmerId: plot.farmerId,
+        soilTexture: {
+          clayPct: clayPct === "" ? null : Number(clayPct),
+          sandPct: sandPct === "" ? null : Number(sandPct),
+          siltPct: siltPct === "" ? null : Number(siltPct),
+        },
+        testReportMediaId,
+        createdAt: now, updatedAt: now, synced: false,
+      });
+      await db.farmers.update(plot.farmerId, { updatedAt: now, synced: false });
+      notifications.show({ color: "green", message: "Soil type test added" });
+      onClose();
+      syncNow().catch(() => {});
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not save soil type test" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AppModal opened={opened} onClose={onClose} title={plot ? `Add soil type test · Plot ${plot.seq}` : "Add soil type test"}>
+      <Stack gap="md">
+        <div>
+          <Text size="sm" fw={500} mb={6}>Soil type</Text>
+          <SimpleGrid cols={3} spacing="xs">
+            <NumberInput label="Clay %" min={0} max={100} value={clayPct} onChange={(v) => setClayPct(v as number | "")} />
+            <NumberInput label="Sand %" min={0} max={100} value={sandPct} onChange={(v) => setSandPct(v as number | "")} />
+            <NumberInput label="Silt %" min={0} max={100} value={siltPct} onChange={(v) => setSiltPct(v as number | "")} />
+          </SimpleGrid>
+          {anyTexture && (
+            <Text size="xs" c={textureTotal === 100 ? "dimmed" : "orange"} mt={4}>
+              Total: {textureTotal}% {textureTotal !== 100 ? "(should add up to 100%)" : ""}
+            </Text>
+          )}
+        </div>
+        <PhotoInput label="Test report (photo/scan, optional)" value={photo} onChange={setPhoto} height={140} />
+        <Button color="orange" leftSection={<Flask size={16} />} onClick={save} loading={saving} disabled={!anyTexture}>
+          Save test
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Timeline of water TDS (ppm) tests taken from a plot ----
+// Water TDS keeps full history — like soil type (see SoilTextureTestsModal
+// above) — because it's normal to re-test a plot's water over time and each
+// reading should stay on record rather than overwrite the last.
+function WaterTDSTestsModal(
+  { opened, onClose, plot, onAddTest }:
+  { opened: boolean; onClose: () => void; plot: Plot | null; onAddTest: () => void }
+) {
+  const tests = useLiveQuery(
+    async (): Promise<WaterTDSTest[]> => plot ? (await db.waterTDSTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted) : [],
+    [plot?.id]
+  );
+  const sorted = [...(tests || [])].sort((a, b) => b.createdAt - a.createdAt);
+  const fmtWhen = (n: number) =>
+    new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const dayLabel = (n: number) => {
+    const d = new Date(n), t = new Date();
+    const y = new Date(); y.setDate(t.getDate() - 1);
+    const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  return (
+    <AppModal opened={opened} onClose={onClose}
+      title={plot ? `Water TDS tests · Plot ${plot.seq}${sorted.length ? ` (${sorted.length})` : ""}` : "Water TDS tests"}>
+      <Stack gap="md">
+        {sorted.length === 0 ? (
+          <Stack align="center" gap={6} py="lg">
+            <ThemeIcon size={44} radius="xl" variant="light" color="teal"><Drop size={24} weight="duotone" /></ThemeIcon>
+            <Text c="dimmed" ta="center">No water TDS tests yet for this plot</Text>
+            <Text c="dimmed" size="sm">Record a TDS (ppm) reading each time this plot's water is tested</Text>
+          </Stack>
+        ) : (
+          <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="teal">
+            {sorted.map((t) => (
+              <Timeline.Item key={t.id} bullet={<Drop size={13} weight="fill" />}
+                title={<Group gap={6}>
+                  <Text fw={700} size="sm">{t.waterTDS ?? "—"} ppm</Text>
+                  {!t.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}
+                </Group>}>
+                <Text size="xs" c="dimmed">{dayLabel(t.createdAt)} · {fmtWhen(t.createdAt)}</Text>
+              </Timeline.Item>
+            ))}
+          </Timeline>
+        )}
+        <Button variant="light" color="teal" leftSection={<Drop size={16} />} onClick={onAddTest} disabled={!plot}>
+          Add test
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
+// ---- Form to record one new water TDS (ppm) reading for a plot ----
+function AddWaterTDSTestModal(
+  { opened, onClose, plot }:
+  { opened: boolean; onClose: () => void; plot: Plot | null }
+) {
+  const { syncNow } = useSession();
+  const [waterTDS, setWaterTDS] = useState<number | "">("");
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!opened) return;
+    setWaterTDS(""); setPhoto(null);
+  }, [opened]);
+
+  const save = async () => {
+    if (!plot || waterTDS === "") return;
+    setSaving(true);
+    try {
+      const now = Date.now();
+      let testReportMediaId: string | null = null;
+      if (photo) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: photo, createdAt: now, synced: false }); }
+      await db.waterTDSTests.add({
+        id: uid(), plotId: plot.id, farmId: plot.farmId, farmerId: plot.farmerId,
+        waterTDS: Number(waterTDS),
+        testReportMediaId,
+        createdAt: now, updatedAt: now, synced: false,
+      });
+      await db.farmers.update(plot.farmerId, { updatedAt: now, synced: false });
+      notifications.show({ color: "green", message: "Water TDS test added" });
+      onClose();
+      syncNow().catch(() => {});
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not save water TDS test" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AppModal opened={opened} onClose={onClose} title={plot ? `Add water TDS test · Plot ${plot.seq}` : "Add water TDS test"}>
+      <Stack gap="md">
+        <NumberInput label="Water TDS (ppm)" placeholder="Enter TDS reading" min={0}
+          leftSection={<Drop size={16} />} value={waterTDS} onChange={(v) => setWaterTDS(v as number | "")} data-autofocus />
+        <PhotoInput label="Test report (photo/scan, optional)" value={photo} onChange={setPhoto} height={140} />
+        <Button color="teal" leftSection={<Drop size={16} />} onClick={save} loading={saving} disabled={waterTDS === ""}>
+          Save test
+        </Button>
+      </Stack>
+    </AppModal>
+  );
+}
+
 // ---- Manual entry fallback when a QR won't scan (damaged / poor light) ----
 function ManualSampleModal(
   { opened, onClose, onSubmit }:
@@ -517,6 +819,28 @@ function SoilCropModal(
   );
 }
 
+// One read-only plot summary line — its own component (like PlotRow above)
+// so the soil-type-test count can be live-queried per plot.
+function PlotSummaryLine({ plot: p }: { plot: any }) {
+  const soilTests = useLiveQuery(
+    async (): Promise<SoilTextureTest[]> => (await db.soilTextureTests.where("plotId").equals(p.id).toArray()).filter((x) => !x.deleted),
+    [p.id]
+  );
+  const waterTests = useLiveQuery(
+    async (): Promise<WaterTDSTest[]> => (await db.waterTDSTests.where("plotId").equals(p.id).toArray()).filter((x) => !x.deleted),
+    [p.id]
+  );
+  const soilTestCount = soilTests?.length ?? 0;
+  const waterTestCount = waterTests?.length ?? 0;
+  return (
+    <Text size="xs" c="dimmed">
+      Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}
+      {waterTestCount > 0 ? ` · ${waterTestCount} water test${waterTestCount === 1 ? "" : "s"}` : ""}
+      {soilTestCount > 0 ? ` · ${soilTestCount} soil test${soilTestCount === 1 ? "" : "s"}` : ""}
+    </Text>
+  );
+}
+
 // ---- Read-only farm detail view (tap the farm card) ----
 function FarmDetailModal(
   { opened, onClose, farm, plots, samples, photoUrl, onEdit }:
@@ -572,11 +896,7 @@ function FarmDetailModal(
           ) : (
             <Stack gap={4}>
               {plots.map((p) => (
-                <Text key={p.id} size="xs" c="dimmed">
-                  Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}
-                  {p.waterTDS != null ? ` · TDS ${p.waterTDS}ppm` : ""}
-                  {p.soilTexture ? ` · soil ${p.soilTexture.clayPct ?? "—"}/${p.soilTexture.sandPct ?? "—"}/${p.soilTexture.siltPct ?? "—"}` : ""}
-                </Text>
+                <PlotSummaryLine key={p.id} plot={p} />
               ))}
             </Stack>
           )}
@@ -600,17 +920,27 @@ function FarmDetailModal(
           </Paper>
         )}
 
-        {(farm.farmerFocus || asWaterSourceArray(farm.waterSource).length || farm.irrigationAvailable || (farm.seasonsPossible?.length) || (farm.knownIssues?.length) ||
+        {(farm.farmerFocus || asWaterSourceArray(farm.waterSource).length || asIrrigationArray(farm.irrigationAvailable).length || (farm.seasonsPossible?.length) || (farm.knownIssues?.length) ||
           farm.previousCrop || farm.previousCropProduction || (farm.animalPressure?.length) || farm.accessibility) && (
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Users size={16} /> From farmer</Group></Text>
             <Stack gap={2}>
               {farm.farmerFocus && <Text size="xs" c="dimmed">{FARMER_FOCUS_DESCRIPTIONS[farm.farmerFocus]}</Text>}
               {!!asWaterSourceArray(farm.waterSource).length && <Text size="xs" c="dimmed">Water source: {asWaterSourceArray(farm.waterSource).map((s) => labelOf(WATER_SOURCE_OPTS, s)).join(", ")}</Text>}
-              {farm.irrigationAvailable && <Text size="xs" c="dimmed">Irrigation: {labelOf(IRRIGATION_OPTS, farm.irrigationAvailable)}</Text>}
+              {!!asIrrigationArray(farm.irrigationAvailable).length && <Text size="xs" c="dimmed">Irrigation: {asIrrigationArray(farm.irrigationAvailable).map((s) => labelOf(IRRIGATION_OPTS, s)).join(", ")}</Text>}
               {!!farm.seasonsPossible?.length && <Text size="xs" c="dimmed">Seasons: {farm.seasonsPossible.map((s) => labelOf(SEASON_OPTS, s)).join(", ")}</Text>}
-              {!!farm.knownIssues?.length && <Text size="xs" c="dimmed">Known issues: {farm.knownIssues.map((s) => labelOf(KNOWN_ISSUE_OPTS, s)).join(", ")}</Text>}
-              {!!farm.animalPressure?.length && <Text size="xs" c="dimmed">Animal pressure: {farm.animalPressure.map((s) => labelOf(ANIMAL_PRESSURE_OPTS, s)).join(", ")}</Text>}
+              {!!farm.knownIssues?.length && (
+                <Text size="xs" c="dimmed">
+                  Known issues: {farm.knownIssues.map((s) => labelOf(KNOWN_ISSUE_OPTS, s)).join(", ")}
+                  {farm.knownIssues.includes("other") && farm.knownIssuesOther ? ` (${farm.knownIssuesOther})` : ""}
+                </Text>
+              )}
+              {!!farm.animalPressure?.length && (
+                <Text size="xs" c="dimmed">
+                  Animal pressure: {farm.animalPressure.map((s) => labelOf(ANIMAL_PRESSURE_OPTS, s)).join(", ")}
+                  {farm.animalPressure.includes("other") && farm.animalPressureOther ? ` (${farm.animalPressureOther})` : ""}
+                </Text>
+              )}
               {farm.accessibility && <Text size="xs" c="dimmed">{ACCESSIBILITY_DESCRIPTIONS[farm.accessibility]}</Text>}
               {farm.previousCrop && <Text size="xs" c="dimmed">Previous crop: {farm.previousCrop}</Text>}
               {farm.previousCropProduction && (
@@ -888,13 +1218,15 @@ function AddFarmModal(
   // ---- From Farmer ----
   const [farmerFocus, setFarmerFocus] = useState<FarmerFocus | "">("");
   const [waterSource, setWaterSource] = useState<WaterSource[]>([]);
-  const [irrigationAvailable, setIrrigationAvailable] = useState<IrrigationAvailable | "">("");
+  const [irrigationAvailable, setIrrigationAvailable] = useState<IrrigationAvailable[]>([]);
   const [seasonsPossible, setSeasonsPossible] = useState<Season[]>([]);
   const [knownIssues, setKnownIssues] = useState<KnownIssue[]>([]);
+  const [knownIssuesOther, setKnownIssuesOther] = useState("");
   const [previousCrop, setPreviousCrop] = useState("");
   const [prevCropQuintals, setPrevCropQuintals] = useState<number | "">("");
   const [prevCropBenchmark, setPrevCropBenchmark] = useState<BenchmarkComparison | "">("");
   const [animalPressure, setAnimalPressure] = useState<AnimalPressure[]>([]);
+  const [animalPressureOther, setAnimalPressureOther] = useState("");
   const [accessibility, setAccessibility] = useState<Accessibility | "">("");
 
   // ---- Supervisor Observation ----
@@ -1002,13 +1334,15 @@ function AddFarmModal(
       setPlotSizeOverride(editFarm.plotSizeSqFtOverride ?? (editFarm.plotSizeHectOverride != null ? legacyHectToSqFt(editFarm.plotSizeHectOverride) : ""));
       setFarmerFocus(editFarm.farmerFocus ?? "");
       setWaterSource(asWaterSourceArray(editFarm.waterSource));
-      setIrrigationAvailable(editFarm.irrigationAvailable ?? "");
+      setIrrigationAvailable(asIrrigationArray(editFarm.irrigationAvailable));
       setSeasonsPossible(editFarm.seasonsPossible ?? []);
       setKnownIssues(editFarm.knownIssues ?? []);
+      setKnownIssuesOther(editFarm.knownIssuesOther ?? "");
       setPreviousCrop(editFarm.previousCrop ?? "");
       setPrevCropQuintals(editFarm.previousCropProduction?.quintals ?? "");
       setPrevCropBenchmark(editFarm.previousCropProduction?.vsBenchmark ?? "");
       setAnimalPressure(editFarm.animalPressure ?? []);
+      setAnimalPressureOther(editFarm.animalPressureOther ?? "");
       setAccessibility(editFarm.accessibility ?? "");
       setGradient(editFarm.gradient ?? "");
       setWaterloggingProbability(editFarm.waterloggingProbability ?? "");
@@ -1018,9 +1352,9 @@ function AddFarmModal(
       setPhoto(null); setLoc(null); setBoundary([]); setNote("");
       setTreeCountBig(""); setTreeCountSmall(""); setMobileCoverage("");
       setShapeOverride(""); setPlotSizeOverride("");
-      setFarmerFocus(""); setWaterSource([]); setIrrigationAvailable("");
-      setSeasonsPossible([]); setKnownIssues([]); setPreviousCrop("");
-      setPrevCropQuintals(""); setPrevCropBenchmark(""); setAnimalPressure([]); setAccessibility("");
+      setFarmerFocus(""); setWaterSource([]); setIrrigationAvailable([]);
+      setSeasonsPossible([]); setKnownIssues([]); setKnownIssuesOther(""); setPreviousCrop("");
+      setPrevCropQuintals(""); setPrevCropBenchmark(""); setAnimalPressure([]); setAnimalPressureOther(""); setAccessibility("");
       setGradient(""); setWaterloggingProbability(""); setSunlightAvailability(""); setFencingAvailability("");
     }
   }, [opened, editFarm]);
@@ -1050,12 +1384,14 @@ function AddFarmModal(
         plotSizeSqFtOverride: plotSizeOverride === "" ? null : Number(plotSizeOverride),
         farmerFocus: (farmerFocus || null) as FarmerFocus | null,
         waterSource,
-        irrigationAvailable: (irrigationAvailable || null) as IrrigationAvailable | null,
+        irrigationAvailable,
         seasonsPossible,
         knownIssues,
+        knownIssuesOther: knownIssues.includes("other") ? (knownIssuesOther.trim() || undefined) : undefined,
         previousCrop: previousCrop.trim() || undefined,
         previousCropProduction,
         animalPressure,
+        animalPressureOther: animalPressure.includes("other") ? (animalPressureOther.trim() || undefined) : undefined,
         accessibility: (accessibility || null) as Accessibility | null,
         gradient: (gradient || null) as Gradient | null,
         waterloggingProbability: (waterloggingProbability || null) as WaterloggingProbability | null,
@@ -1183,12 +1519,23 @@ function AddFarmModal(
             <MultiSelect placeholder="Select all that apply"
               data={WATER_SOURCE_OPTS} value={waterSource} onChange={(v) => setWaterSource(v as WaterSource[])} comboboxProps={{ withinPortal: true }} />
           </div>
-          <Select label="Irrigation available" placeholder="Select" clearable leftSection={<Drop size={16} />}
-            data={IRRIGATION_OPTS} value={irrigationAvailable || null} onChange={(v) => setIrrigationAvailable((v as IrrigationAvailable) || "")} comboboxProps={{ withinPortal: true }} />
+          <div>
+            <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Irrigation available</Group></Text>
+              <SelectAllToggle options={IRRIGATION_OPTS.map((o) => o.value as IrrigationAvailable)} value={irrigationAvailable} onChange={setIrrigationAvailable} />
+            </Group>
+            <MultiSelect placeholder="Select all that apply"
+              data={IRRIGATION_OPTS} value={irrigationAvailable} onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} comboboxProps={{ withinPortal: true }} />
+          </div>
           <MultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
             data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
-          <MultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
-            data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
+          <div>
+            <MultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
+              data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
+            {knownIssues.includes("other") && (
+              <TextInput mt={6} placeholder="Please specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} />
+            )}
+          </div>
           <div>
             <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
               <Text size="sm" fw={500}><Group gap={6} component="span"><PawPrint size={16} /> Animal pressure</Group></Text>
@@ -1196,6 +1543,9 @@ function AddFarmModal(
             </Group>
             <MultiSelect placeholder="Select all that apply"
               data={ANIMAL_PRESSURE_OPTS} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
+            {animalPressure.includes("other") && (
+              <TextInput mt={6} placeholder="Please specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} />
+            )}
           </div>
           <div>
             <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Tractor size={16} /> Accessibility</Group></Text>
@@ -1323,22 +1673,9 @@ function AddPlotModal(
   const [deleting, setDeleting] = useState(false);
 
   // ---- Tests ----
-  // Two independent tests, both live on the plot (not the farm or the soil
-  // sample) — different plots on the same farm can read differently, and
-  // either can be recorded whether or not a soil sample was ever taken.
-  const [waterTDS, setWaterTDS] = useState<number | "">("");
-  const [clayPct, setClayPct] = useState<number | "">("");
-  const [sandPct, setSandPct] = useState<number | "">("");
-  const [siltPct, setSiltPct] = useState<number | "">("");
-  const [reportPhoto, setReportPhoto] = useState<Blob | null>(null);
-  const [reportDirty, setReportDirty] = useState(false);
-  const textureTotal = [clayPct, sandPct, siltPct].reduce((sum: number, v) => sum + (v === "" ? 0 : Number(v)), 0);
-  const anyTexture = clayPct !== "" || sandPct !== "" || siltPct !== "";
-
-  const existingReport = useLiveQuery(
-    () => (editPlot?.testReportMediaId ? db.media.get(editPlot.testReportMediaId) : undefined),
-    [editPlot?.testReportMediaId]
-  );
+  // Neither Water TDS nor Soil type (clay/sand/silt) lives on the plot form
+  // itself — both keep full history as repeatable records instead (WaterTDSTest
+  // / SoilTextureTest), recorded via the Drop / Flask icons on each plot row.
 
   // Prefill (edit) or reset (add) each time the modal opens.
   useEffect(() => {
@@ -1349,64 +1686,34 @@ function AddPlotModal(
       setLoc(editPlot.lat != null && editPlot.lng != null
         ? { lat: editPlot.lat, lng: editPlot.lng, accuracy: editPlot.accuracy ?? 0, at: editPlot.updatedAt }
         : null);
-      setWaterTDS(editPlot.waterTDS ?? "");
-      setReportDirty(false);
-      setClayPct(editPlot.soilTexture?.clayPct ?? "");
-      setSandPct(editPlot.soilTexture?.sandPct ?? "");
-      setSiltPct(editPlot.soilTexture?.siltPct ?? "");
     } else {
       setCrop(""); setSowingDate(todayISO()); setLoc(null);
-      setWaterTDS(""); setReportDirty(false); setReportPhoto(null);
-      setClayPct(""); setSandPct(""); setSiltPct("");
     }
   }, [opened, editPlot]);
-
-  // Load the existing test report photo (edit mode), unless a new one was picked.
-  useEffect(() => {
-    if (opened && editPlot && !reportDirty && existingReport?.blob) setReportPhoto(existingReport.blob);
-  }, [opened, editPlot, existingReport, reportDirty]);
 
   const save = async () => {
     setSaving(true);
     try {
       const now = Date.now();
-      const soilTexture: SoilTexture | null = anyTexture
-        ? { clayPct: clayPct === "" ? null : Number(clayPct), sandPct: sandPct === "" ? null : Number(sandPct), siltPct: siltPct === "" ? null : Number(siltPct) }
-        : null;
-      const testFields = {
-        waterTDS: waterTDS === "" ? null : Number(waterTDS),
-        soilTexture,
-      };
       if (editPlot) {
-        let testReportMediaId = editPlot.testReportMediaId ?? null;
-        if (reportDirty) {
-          if (testReportMediaId) await db.media.delete(testReportMediaId).catch(() => {});
-          if (reportPhoto) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: reportPhoto, createdAt: now, synced: false }); }
-          else testReportMediaId = null;
-        }
         await db.plots.update(editPlot.id, {
           crop: crop.trim(), sowingDate: sowingDate || undefined,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-          testReportMediaId, ...testFields,
           updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Plot ${editPlot.seq} updated` });
       } else {
         const { id, seq } = await nextPlotId(farm.id);
-        let testReportMediaId: string | null = null;
-        if (reportPhoto) { testReportMediaId = uid(); await db.media.add({ id: testReportMediaId, blob: reportPhoto, createdAt: now, synced: false }); }
         await db.plots.add({
           id, farmId: farm.id, farmerId: farm.farmerId, seq, crop: crop.trim(),
           sowingDate: sowingDate || undefined,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
-          testReportMediaId, ...testFields,
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Plot ${seq} added` });
       }
-      setReportDirty(false);
       onClose();
       syncNow().catch(() => {});
     } finally {
@@ -1441,22 +1748,12 @@ function AddPlotModal(
         />
 
         <Divider label={<Group gap={6}><Flask size={14} /> Tests</Group>} labelPosition="left" />
-        <NumberInput label="Water TDS (ppm)" placeholder="Enter TDS reading" min={0}
-          leftSection={<Drop size={16} />} value={waterTDS} onChange={(v) => setWaterTDS(v as number | "")} />
-        <div>
-          <Text size="sm" fw={500} mb={6}>Soil type</Text>
-          <SimpleGrid cols={3} spacing="xs">
-            <NumberInput label="Clay %" min={0} max={100} value={clayPct} onChange={(v) => setClayPct(v as number | "")} />
-            <NumberInput label="Sand %" min={0} max={100} value={sandPct} onChange={(v) => setSandPct(v as number | "")} />
-            <NumberInput label="Silt %" min={0} max={100} value={siltPct} onChange={(v) => setSiltPct(v as number | "")} />
-          </SimpleGrid>
-          {anyTexture && (
-            <Text size="xs" c={textureTotal === 100 ? "dimmed" : "orange"} mt={4}>
-              Total: {textureTotal}% {textureTotal !== 100 ? "(should add up to 100%)" : ""}
-            </Text>
-          )}
-        </div>
-        <PhotoInput label="Test report (photo/scan, optional)" value={reportPhoto} onChange={(b) => { setReportPhoto(b); setReportDirty(true); }} height={140} />
+        <Text size="xs" c="dimmed">
+          Water TDS and soil type (clay/sand/silt) are recorded separately, since a plot can be
+          tested more than once — tap the <Drop size={11} weight="fill" style={{ verticalAlign: "middle" }} /> icon on the
+          plot's row for water TDS test history, or the <Flask size={11} weight="fill" style={{ verticalAlign: "middle" }} /> icon
+          for soil type test history — and add a new reading from either.
+        </Text>
 
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>
           {editPlot ? "Update plot" : "Save plot"}

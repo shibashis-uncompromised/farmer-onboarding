@@ -4,6 +4,11 @@
 
 export type OnboardingStatus = "not_started" | "pending" | "completed";
 
+// Farmer profile attributes (bio data)
+export type FinancialCapacity = "low" | "medium" | "high";
+export type Landholding = "lt_2_5" | "between_2_5_10" | "gt_10";
+export type AdoptionLevel = "basic" | "improved" | "progressive" | "advanced";
+
 // A seed package handed to / allocated for a farmer (e.g. Groundnut ×2).
 export interface SeedPackage {
   seed: string;
@@ -24,6 +29,9 @@ export interface Farmer {
   note: string;             // optional note from the onboarding team
   photoId: string | null;   // -> media table
   seeds?: SeedPackage[];    // seed packages for this farmer (rides in the synced record)
+  financialCapacity?: FinancialCapacity | null;
+  landholding?: Landholding | null;
+  adoptionLevel?: AdoptionLevel | null;
   bioComplete: boolean;
   createdAt: number;
   updatedAt: number;
@@ -43,8 +51,8 @@ export type FarmerFocus = "daily" | "twice_weekly" | "weekly_plus";
 export type WaterSource = "rainfed" | "borewell" | "open_well" | "farm_pond" | "anicut_river";
 export type IrrigationAvailable = "none" | "flood" | "sprinkler" | "drip";
 export type Season = "kharif" | "rabi" | "zaid";
-export type KnownIssue = "termites" | "nematodes" | "frost" | "flooding";
-export type AnimalPressure = "nilgai" | "boar" | "monkey" | "rabbit" | "birds";
+export type KnownIssue = "termites" | "nematodes" | "frost" | "flooding" | "other";
+export type AnimalPressure = "nilgai" | "boar" | "monkey" | "rabbit" | "birds" | "other";
 export type Accessibility = "tractor" | "small_machinery" | "hand_tools";
 export type BenchmarkComparison = "above" | "at" | "below";
 
@@ -84,12 +92,14 @@ export interface Farm {
   // ---- From Farmer (interview/questionnaire) ----
   farmerFocus?: FarmerFocus | null;
   waterSource?: WaterSource[];    // a farm can draw on more than one source (e.g. borewell + farm pond)
-  irrigationAvailable?: IrrigationAvailable | null;
+  irrigationAvailable?: IrrigationAvailable[];   // a farm can have more than one irrigation method available
   seasonsPossible?: Season[];
   knownIssues?: KnownIssue[];
+  knownIssuesOther?: string;      // free-text detail when knownIssues includes "other"
   previousCrop?: string;
   previousCropProduction?: PreviousCropProduction | null;
   animalPressure?: AnimalPressure[];
+  animalPressureOther?: string;   // free-text detail when animalPressure includes "other"
   accessibility?: Accessibility | null;
 
   // ---- Supervisor Observation (visual assessment on visit) ----
@@ -127,14 +137,46 @@ export interface Plot {
   sowingDate?: string;     // when the crop was sown (YYYY-MM-DD)
 
   // ---- Tests ----
-  // Two independent tests, both live on the plot — different plots on the
-  // same farm can have different readings, and either can be recorded
-  // whether or not a soil sample was ever taken.
-  waterTDS?: number | null;              // ppm
-  soilTexture?: SoilTexture | null;
-  testReportMediaId?: string | null;     // -> media table (photo/scan of the lab report)
+  // Neither water TDS nor soil type (clay/sand/silt) lives here — both are
+  // recorded many times over a plot's life, so each reading is its own
+  // WaterTDSTest / SoilTextureTest record instead of a single field on Plot
+  // that would overwrite its own history.
 
   createdAt: number;
+  updatedAt: number;
+  synced: boolean;
+  deleted?: boolean;       // soft delete
+}
+
+// A soil type (texture) reading for a plot — clay/sand/silt %, recorded
+// whenever the plot is tested. Kept as its own repeatable record (like
+// SoilSample) rather than a single field on Plot, since a plot can be
+// tested many times over its life and each reading should stay in history.
+export interface SoilTextureTest {
+  id: string;             // local uid
+  plotId: string;
+  farmId: string;
+  farmerId: string;
+  soilTexture: SoilTexture;
+  testReportMediaId?: string | null;     // -> media table (photo/scan of the lab report)
+  createdAt: number;      // when the test was recorded
+  updatedAt: number;
+  synced: boolean;
+  deleted?: boolean;       // soft delete
+}
+
+// A water TDS reading for a plot — ppm, recorded whenever the plot's water
+// is tested. Kept as its own repeatable record (like SoilTextureTest) rather
+// than a single field on Plot, since a plot can be tested many times over
+// its life and each reading should stay in history.
+export interface WaterTDSTest {
+  id: string;             // local uid
+  plotId: string;
+  farmId: string;
+  farmerId: string;
+  waterTDS: number | null;               // ppm
+  testReportMediaId?: string | null;     // -> media table (photo/scan of the water test report)
+  createdAt: number;      // when the test was recorded
   updatedAt: number;
   synced: boolean;
   deleted?: boolean;       // soft delete
@@ -165,8 +207,8 @@ export interface SoilSample {
   neoperkSampleId?: string;   // sample_id returned after submitting to the Neoperk scanner system
   submittedAt?: number;       // when submitted to Neoperk
 
-  // Test results (water TDS, soil texture, lab report) live on the Farm
-  // instead — both are independent of whether a soil sample was taken.
+  // Test results (water TDS in WaterTDSTest, soil type in SoilTextureTest)
+  // live elsewhere — both are independent of whether a soil sample was taken.
 
   createdAt: number;     // when scanned
   updatedAt: number;

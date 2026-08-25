@@ -71,17 +71,19 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 2) push local farmer/farm/plot changes (include successfully uploaded media)
   // Best-effort: a push failure must NOT stop the pull below, so viewing
   // server data never depends on the upload/push succeeding.
-  const [lf, lfm, lp, lss] = await Promise.all([
-    db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray(),
+  const [lf, lfm, lp, lss, lst, lwt] = await Promise.all([
+    db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray(), db.soilTextureTests.toArray(), db.waterTDSTests.toArray(),
   ]);
   const uf = lf.filter((x) => !x.synced);
   const um = lfm.filter((x) => !x.synced);
   const up = lp.filter((x) => !x.synced);
   const uss = lss.filter((x) => !x.synced);
+  const ust = lst.filter((x) => !x.synced);
+  const uwt = lwt.filter((x) => !x.synced);
   let pushed = 0;
 
   async function pushTable<T extends { id: string }>(
-    key: "farmers" | "farms" | "plots" | "soilSamples",
+    key: "farmers" | "farms" | "plots" | "soilSamples" | "soilTextureTests" | "waterTDSTests",
     table: Table<T, string>,
     rows: T[]
   ) {
@@ -102,6 +104,8 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   await pushTable("farms", db.farms, um);
   await pushTable("plots", db.plots, up);
   await pushTable("soilSamples", db.soilSamples, uss);
+  await pushTable("soilTextureTests", db.soilTextureTests, ust);
+  await pushTable("waterTDSTests", db.waterTDSTests, uwt);
 
   let mediaPushed = 0;
   for (const chunk of chunksOf(syncedMediaPayload)) {
@@ -119,11 +123,13 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 3) pull the full server set + merge (network call OUTSIDE the tx)
   const server = await apiPull(token);
   let pulled = 0;
-  await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
+  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests], async () => {
     pulled += await mergeTable(db.farmers as any, server.farmers as any);
     pulled += await mergeTable(db.farms as any, server.farms as any);
     pulled += await mergeTable(db.plots as any, server.plots as any);
     pulled += await mergeTable(db.soilSamples as any, server.soilSamples as any);
+    pulled += await mergeTable(db.soilTextureTests as any, server.soilTextureTests as any);
+    pulled += await mergeTable(db.waterTDSTests as any, server.waterTDSTests as any);
   });
 
   // 4) Media blobs. Field devices already hold the photos THEY captured (local),

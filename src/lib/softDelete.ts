@@ -22,7 +22,7 @@ export async function sweepPreLaunch(): Promise<number> {
   const stampDeleted = (x: { createdAt: number; deleted?: boolean }) =>
     !x.deleted && x.createdAt < LAUNCH_CUTOFF_TS;
 
-  await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
+  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests], async () => {
     // Repair the first RJ import, which was accidentally stamped as 2025. Some
     // devices may already have pulled/swept it, so restore those known IDs
     // before applying the generic pre-launch cleanup.
@@ -39,7 +39,7 @@ export async function sweepPreLaunch(): Promise<number> {
       }
     }
 
-    for (const table of [db.farmers, db.farms, db.plots, db.soilSamples] as const) {
+    for (const table of [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests] as const) {
       const rows = await table.toArray();
       for (const r of rows as any[]) {
         if (table === db.farmers && isKnownImportedFarmerId(r.id)) continue;
@@ -55,33 +55,41 @@ export async function sweepPreLaunch(): Promise<number> {
 
 export async function softDeleteFarmer(id: string): Promise<void> {
   const now = Date.now();
-  await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
+  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests], async () => {
     await db.farmers.update(id, { deleted: true, updatedAt: now, synced: false } as any);
-    const [farms, plots, samples] = await Promise.all([
+    const [farms, plots, samples, textureTests, tdsTests] = await Promise.all([
       db.farms.where("farmerId").equals(id).toArray(),
       db.plots.where("farmerId").equals(id).toArray(),
       db.soilSamples.where("farmerId").equals(id).toArray(),
+      db.soilTextureTests.where("farmerId").equals(id).toArray(),
+      db.waterTDSTests.where("farmerId").equals(id).toArray(),
     ]);
     await Promise.all([
       ...farms.map((x) => db.farms.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
       ...plots.map((x) => db.plots.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
       ...samples.map((x) => db.soilSamples.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+      ...textureTests.map((x) => db.soilTextureTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+      ...tdsTests.map((x) => db.waterTDSTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
     ]);
   });
 }
 
 export async function softDeleteFarm(id: string): Promise<void> {
   const now = Date.now();
-  await db.transaction("rw", db.farmers, db.farms, db.plots, db.soilSamples, async () => {
+  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests], async () => {
     const farm = await db.farms.get(id);
     await db.farms.update(id, { deleted: true, updatedAt: now, synced: false } as any);
-    const [plots, samples] = await Promise.all([
+    const [plots, samples, textureTests, tdsTests] = await Promise.all([
       db.plots.where("farmId").equals(id).toArray(),
       db.soilSamples.where("farmId").equals(id).toArray(),
+      db.soilTextureTests.where("farmId").equals(id).toArray(),
+      db.waterTDSTests.where("farmId").equals(id).toArray(),
     ]);
     await Promise.all([
       ...plots.map((x) => db.plots.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
       ...samples.map((x) => db.soilSamples.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+      ...textureTests.map((x) => db.soilTextureTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+      ...tdsTests.map((x) => db.waterTDSTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
     ]);
     if (farm?.farmerId) await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false } as any);
   });
@@ -89,9 +97,17 @@ export async function softDeleteFarm(id: string): Promise<void> {
 
 export async function softDeletePlot(id: string): Promise<void> {
   const now = Date.now();
-  await db.transaction("rw", db.farmers, db.plots, async () => {
+  await db.transaction("rw", [db.farmers, db.plots, db.soilTextureTests, db.waterTDSTests], async () => {
     const plot = await db.plots.get(id);
     await db.plots.update(id, { deleted: true, updatedAt: now, synced: false } as any);
+    const [textureTests, tdsTests] = await Promise.all([
+      db.soilTextureTests.where("plotId").equals(id).toArray(),
+      db.waterTDSTests.where("plotId").equals(id).toArray(),
+    ]);
+    await Promise.all([
+      ...textureTests.map((x) => db.soilTextureTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+      ...tdsTests.map((x) => db.waterTDSTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
+    ]);
     if (plot?.farmerId) await db.farmers.update(plot.farmerId, { updatedAt: now, synced: false } as any);
   });
 }
@@ -102,5 +118,23 @@ export async function softDeleteSoilSample(id: string): Promise<void> {
     const sample = await db.soilSamples.get(id);
     await db.soilSamples.update(id, { deleted: true, updatedAt: now, synced: false } as any);
     if (sample?.farmerId) await db.farmers.update(sample.farmerId, { updatedAt: now, synced: false } as any);
+  });
+}
+
+export async function softDeleteSoilTextureTest(id: string): Promise<void> {
+  const now = Date.now();
+  await db.transaction("rw", db.farmers, db.soilTextureTests, async () => {
+    const test = await db.soilTextureTests.get(id);
+    await db.soilTextureTests.update(id, { deleted: true, updatedAt: now, synced: false } as any);
+    if (test?.farmerId) await db.farmers.update(test.farmerId, { updatedAt: now, synced: false } as any);
+  });
+}
+
+export async function softDeleteWaterTDSTest(id: string): Promise<void> {
+  const now = Date.now();
+  await db.transaction("rw", db.farmers, db.waterTDSTests, async () => {
+    const test = await db.waterTDSTests.get(id);
+    await db.waterTDSTests.update(id, { deleted: true, updatedAt: now, synced: false } as any);
+    if (test?.farmerId) await db.farmers.update(test.farmerId, { updatedAt: now, synced: false } as any);
   });
 }

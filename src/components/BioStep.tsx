@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Avatar, Badge, Box, Button, Collapse, Divider, Group, SegmentedControl, SimpleGrid,
+  Avatar, Badge, Box, Button, Collapse, Divider, Group, Select, SegmentedControl, SimpleGrid,
   Stack, Switch, Text, Textarea, TextInput,
 } from "@mantine/core";
 import {
@@ -14,12 +14,24 @@ import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
 import { seedLabel } from "@/lib/seeds";
 import { useMediaUrl } from "@/lib/useMediaUrl";
-import type { Farmer, SeedPackage } from "@/lib/types";
+import type { Farmer, SeedPackage, FinancialCapacity, Landholding, AdoptionLevel } from "@/lib/types";
 import PhotoInput from "./PhotoInput";
 import SeedsInput from "./SeedsInput";
 import { blurOnEnter } from "@/lib/ui";
 
 const RELATIONS = ["S/o", "W/o", "D/o", "C/o"];
+
+const FINANCIAL_CAPACITY_OPTS = [
+  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
+];
+const LANDHOLDING_OPTS = [
+  { value: "lt_2_5", label: "< 2.5 acres" }, { value: "between_2_5_10", label: "2.5–10 acres" }, { value: "gt_10", label: "> 10 acres" },
+];
+const ADOPTION_LEVEL_OPTS = [
+  { value: "basic", label: "Basic" }, { value: "improved", label: "Improved" },
+  { value: "progressive", label: "Progressive" }, { value: "advanced", label: "Advanced" },
+];
+const labelOf = (opts: { value: string; label: string }[], v?: string | null) => opts.find((o) => o.value === v)?.label || null;
 
 export default function BioStep({
   farmer, onSaved, onContinue,
@@ -40,6 +52,9 @@ export default function BioStep({
     farmer.hasSmartphone == null ? "" : farmer.hasSmartphone ? "yes" : "no"
   );
   const [farmerType, setFarmerType] = useState<"lead" | "existing">(farmer.farmerType || "existing");
+  const [financialCapacity, setFinancialCapacity] = useState<FinancialCapacity | "">(farmer.financialCapacity || "");
+  const [landholding, setLandholding] = useState<Landholding | "">(farmer.landholding || "");
+  const [adoptionLevel, setAdoptionLevel] = useState<AdoptionLevel | "">(farmer.adoptionLevel || "");
   const [note, setNote] = useState(farmer.note || "");
   const [seeds, setSeeds] = useState<SeedPackage[]>(farmer.seeds || []);
   const [photo, setPhoto] = useState<Blob | null>(null);
@@ -83,6 +98,9 @@ export default function BioStep({
         coRelation: coOn ? relation : "",
         phone: phone.trim(), hasSmartphone: smartphone === "" ? null : smartphone === "yes",
         farmerType, note: note.trim(),
+        financialCapacity: (financialCapacity || null) as FinancialCapacity | null,
+        landholding: (landholding || null) as Landholding | null,
+        adoptionLevel: (adoptionLevel || null) as AdoptionLevel | null,
         seeds: seeds.map((s) => ({ seed: s.seed, qty: s.qty })),
         photoId, bioComplete: true, updatedAt: Date.now(), synced: false,
       });
@@ -129,6 +147,11 @@ export default function BioStep({
           <Field label="Phone" value={phone || "—"} />
           <Field label="Smartphone" value={smartphone === "yes" ? "Yes" : smartphone === "no" ? "No" : "—"} />
         </SimpleGrid>
+        <SimpleGrid cols={2} spacing="sm">
+          <Field label="Financial capacity" value={labelOf(FINANCIAL_CAPACITY_OPTS, financialCapacity) || "—"} />
+          <Field label="Landholding" value={labelOf(LANDHOLDING_OPTS, landholding) || "—"} />
+        </SimpleGrid>
+        <Field label="Adoption level" value={labelOf(ADOPTION_LEVEL_OPTS, adoptionLevel) || "—"} />
         {seeds.length > 0 && (
           <div>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={4}>Seed packages</Text>
@@ -205,6 +228,28 @@ export default function BioStep({
           />
         </div>
       </SimpleGrid>
+
+      <Divider />
+      <div>
+        <Text size="sm" fw={500} mb={6}>Financial capacity</Text>
+        <SegmentedControl
+          fullWidth value={financialCapacity} onChange={(v) => setFinancialCapacity(v as FinancialCapacity)}
+          data={FINANCIAL_CAPACITY_OPTS}
+        />
+      </div>
+      <div>
+        <Text size="sm" fw={500} mb={6}>Landholding</Text>
+        <SegmentedControl
+          fullWidth value={landholding} onChange={(v) => setLandholding(v as Landholding)}
+          data={LANDHOLDING_OPTS}
+        />
+      </div>
+      <Select
+        label="Adoption level" placeholder="Select" clearable
+        data={ADOPTION_LEVEL_OPTS} value={adoptionLevel || null}
+        onChange={(v) => setAdoptionLevel((v as AdoptionLevel) || "")}
+        comboboxProps={{ withinPortal: true }}
+      />
 
       <Divider />
       <SeedsInput value={seeds} onChange={setSeeds} />
