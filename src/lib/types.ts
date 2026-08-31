@@ -45,21 +45,23 @@ export type MobileCoverage = "good" | "weak" | "none";
 export type FarmShape = "rectangle" | "square" | "trapezoid" | "irregular";
 
 // Group: From Farmer
-// How often the SUPERVISOR needs to check in on this farm (not how often the
-// farmer themselves works it).
+// How often the FARMER visits this farm.
 export type FarmerFocus = "daily" | "twice_weekly" | "weekly_plus";
 export type WaterSource = "rainfed" | "borewell" | "open_well" | "farm_pond" | "anicut_river";
 export type IrrigationAvailable = "none" | "flood" | "sprinkler" | "drip";
-export type Season = "kharif" | "rabi" | "zaid";
+export type Season = "kharif" | "rabi" | "zaid" | "other";
 export type KnownIssue = "termites" | "nematodes" | "frost" | "flooding" | "other";
 export type AnimalPressure = "nilgai" | "boar" | "monkey" | "rabbit" | "birds" | "other";
 export type Accessibility = "tractor" | "small_machinery" | "hand_tools";
 export type BenchmarkComparison = "above" | "at" | "below";
+// Tools/equipment the farmer has access to for this farm.
+export type FarmTool = "tractor" | "power_tiller" | "pump_set" | "sprayer" | "thresher" | "plough" | "hand_tools" | "other";
 
 // Group: Supervisor Observation
-export type Gradient = "flat" | "slight" | "significant";
+// Gradient/Sunlight are recorded as the % measured/estimated on visit.
+export type Gradient = "lt_5" | "5_10" | "10_30" | "gt_30";
 export type WaterloggingProbability = "low" | "medium" | "high";
-export type SunlightAvailability = "unobstructed" | "partial" | "low";
+export type SunlightAvailability = "lt_5" | "5_10" | "10_30" | "30_50" | "gt_50";
 export type FencingAvailability = "none" | "natural" | "stone_pitch" | "wire_fence" | "boundary_wall";
 
 // Farmer-reported production for the previous crop on this farm.
@@ -94,6 +96,7 @@ export interface Farm {
   waterSource?: WaterSource[];    // a farm can draw on more than one source (e.g. borewell + farm pond)
   irrigationAvailable?: IrrigationAvailable[];   // a farm can have more than one irrigation method available
   seasonsPossible?: Season[];
+  seasonsPossibleOther?: string;  // free-text detail when seasonsPossible includes "other"
   knownIssues?: KnownIssue[];
   knownIssuesOther?: string;      // free-text detail when knownIssues includes "other"
   previousCrop?: string;
@@ -101,6 +104,8 @@ export interface Farm {
   animalPressure?: AnimalPressure[];
   animalPressureOther?: string;   // free-text detail when animalPressure includes "other"
   accessibility?: Accessibility | null;
+  toolsAvailable?: FarmTool[];     // tools/equipment the farmer has access to
+  toolsAvailableOther?: string;   // free-text detail when toolsAvailable includes "other"
 
   // ---- Supervisor Observation (visual assessment on visit) ----
   gradient?: Gradient | null;
