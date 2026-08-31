@@ -53,11 +53,20 @@ const USER_REGIONS: Record<string, string[]> = {
   admin: ["RJ", "MP", "GJ"],   // admin sees every active region
 };
 
+// Per-user village allowlist (by village code) — takes precedence over region
+// scoping. Use this when a user should see only specific villages, not a whole
+// region. Keys must be lowercase (login lowercases the username).
+const USER_VILLAGES: Record<string, string[]> = {
+  "9001509839": ["002", "001"],   // Aamod (002) + Velua (001) only
+};
+
 export function regionsForUser(username: string | null | undefined): string[] {
   return USER_REGIONS[(username || "").toLowerCase()] || ["RJ"];
 }
 
 export function villagesForUser(username: string | null | undefined): Village[] {
+  const allow = USER_VILLAGES[(username || "").toLowerCase()];
+  if (allow) return VILLAGES.filter((v) => allow.includes(v.code));
   const regions = regionsForUser(username);
   return VILLAGES.filter((v) => regions.includes(v.region));
 }
