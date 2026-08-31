@@ -221,11 +221,16 @@ export interface SoilSample {
   deleted?: boolean;       // soft delete
 }
 
-// Soil texture as % clay / sand / silt (should sum to ~100, not enforced here).
+// Soil texture as % clay / sand / silt (sum to 100). The %s are derived from the
+// jar/sedimentation test layer heights, which are kept for traceability.
 export interface SoilTexture {
   clayPct: number | null;
   sandPct: number | null;
   siltPct: number | null;
+  // Raw settled-layer heights from the jar test (unitless); total = their sum.
+  clayHeight?: number | null;
+  sandHeight?: number | null;
+  siltHeight?: number | null;
 }
 
 export interface SessionLocation {

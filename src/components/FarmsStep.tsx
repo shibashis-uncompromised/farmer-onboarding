@@ -607,26 +607,47 @@ function SoilTextureTestsModal(
 }
 
 // ---- Form to record one new soil type (clay/sand/silt) reading for a plot ----
+// Derive clay/sand/silt % from the jar-test layer heights. Uses largest-remainder
+// rounding so the three integers always sum to exactly 100.
+function pctsFromHeights(clay: number, sand: number, silt: number) {
+  const total = clay + sand + silt;
+  if (total <= 0) return { clayPct: null, sandPct: null, siltPct: null } as const;
+  const raw = { clayPct: (clay / total) * 100, sandPct: (sand / total) * 100, siltPct: (silt / total) * 100 };
+  const keys = ["clayPct", "sandPct", "siltPct"] as const;
+  const out: Record<(typeof keys)[number], number> = {
+    clayPct: Math.floor(raw.clayPct), sandPct: Math.floor(raw.sandPct), siltPct: Math.floor(raw.siltPct),
+  };
+  let remainder = 100 - (out.clayPct + out.sandPct + out.siltPct);
+  const byFraction = [...keys].sort((a, b) => (raw[b] - Math.floor(raw[b])) - (raw[a] - Math.floor(raw[a])));
+  for (let i = 0; i < remainder; i++) out[byFraction[i % 3]] += 1;
+  return out;
+}
+
 function AddSoilTextureTestModal(
   { opened, onClose, plot }:
   { opened: boolean; onClose: () => void; plot: Plot | null }
 ) {
   const { syncNow } = useSession();
-  const [clayPct, setClayPct] = useState<number | "">("");
-  const [sandPct, setSandPct] = useState<number | "">("");
-  const [siltPct, setSiltPct] = useState<number | "">("");
+  const [clayH, setClayH] = useState<number | "">("");
+  const [sandH, setSandH] = useState<number | "">("");
+  const [siltH, setSiltH] = useState<number | "">("");
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
-  const textureTotal = [clayPct, sandPct, siltPct].reduce((sum: number, v) => sum + (v === "" ? 0 : Number(v)), 0);
-  const anyTexture = clayPct !== "" || sandPct !== "" || siltPct !== "";
+
+  const clay = clayH === "" ? 0 : Number(clayH);
+  const sand = sandH === "" ? 0 : Number(sandH);
+  const silt = siltH === "" ? 0 : Number(siltH);
+  const total = clay + sand + silt;
+  const anyHeight = clayH !== "" || sandH !== "" || siltH !== "";
+  const pct = pctsFromHeights(clay, sand, silt);
 
   useEffect(() => {
     if (!opened) return;
-    setClayPct(""); setSandPct(""); setSiltPct(""); setPhoto(null);
+    setClayH(""); setSandH(""); setSiltH(""); setPhoto(null);
   }, [opened]);
 
   const save = async () => {
-    if (!plot || !anyTexture) return;
+    if (!plot || total <= 0) return;
     setSaving(true);
     try {
       const now = Date.now();
@@ -635,9 +656,10 @@ function AddSoilTextureTestModal(
       await db.soilTextureTests.add({
         id: uid(), plotId: plot.id, farmId: plot.farmId, farmerId: plot.farmerId,
         soilTexture: {
-          clayPct: clayPct === "" ? null : Number(clayPct),
-          sandPct: sandPct === "" ? null : Number(sandPct),
-          siltPct: siltPct === "" ? null : Number(siltPct),
+          clayPct: pct.clayPct, sandPct: pct.sandPct, siltPct: pct.siltPct,
+          clayHeight: clayH === "" ? null : clay,
+          sandHeight: sandH === "" ? null : sand,
+          siltHeight: siltH === "" ? null : silt,
         },
         testReportMediaId,
         createdAt: now, updatedAt: now, synced: false,
@@ -657,24 +679,46 @@ function AddSoilTextureTestModal(
     <AppModal opened={opened} onClose={onClose} title={plot ? `Add soil type test · Plot ${plot.seq}` : "Add soil type test"}>
       <Stack gap="md">
         <div>
-          <Text size="sm" fw={500} mb={6}>Soil type</Text>
+          <Group justify="space-between" mb={6}>
+            <Text size="sm" fw={500}>Settled layer heights</Text>
+            <Text size="xs" c="dimmed">Total: {anyHeight ? total : "—"}</Text>
+          </Group>
           <SimpleGrid cols={3} spacing="xs">
-            <NumberInput label="Clay %" min={0} max={100} value={clayPct} onChange={(v) => setClayPct(v as number | "")} />
-            <NumberInput label="Sand %" min={0} max={100} value={sandPct} onChange={(v) => setSandPct(v as number | "")} />
-            <NumberInput label="Silt %" min={0} max={100} value={siltPct} onChange={(v) => setSiltPct(v as number | "")} />
+            <NumberInput label="Clay height" min={0} value={clayH} onChange={(v) => setClayH(v as number | "")} placeholder="top" />
+            <NumberInput label="Silt height" min={0} value={siltH} onChange={(v) => setSiltH(v as number | "")} placeholder="middle" />
+            <NumberInput label="Sand height" min={0} value={sandH} onChange={(v) => setSandH(v as number | "")} placeholder="bottom" />
           </SimpleGrid>
-          {anyTexture && (
-            <Text size="xs" c={textureTotal === 100 ? "dimmed" : "orange"} mt={4}>
-              Total: {textureTotal}% {textureTotal !== 100 ? "(should add up to 100%)" : ""}
-            </Text>
-          )}
+          <Text size="xs" c="dimmed" mt={4}>Measure each settled band (any unit). % is derived below — water/organic layers are not counted.</Text>
         </div>
+
+        <Paper withBorder radius="md" p="sm" bg="gray.0">
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={6}>Derived soil type</Text>
+          {total > 0 ? (
+            <SimpleGrid cols={3} spacing="xs">
+              <PctTile label="Clay" value={pct.clayPct} />
+              <PctTile label="Silt" value={pct.siltPct} />
+              <PctTile label="Sand" value={pct.sandPct} />
+            </SimpleGrid>
+          ) : (
+            <Text size="sm" c="dimmed">Enter the layer heights to see the percentages.</Text>
+          )}
+        </Paper>
+
         <PhotoInput label="Test report (photo/scan, optional)" value={photo} onChange={setPhoto} height={140} />
-        <Button color="orange" leftSection={<Flask size={16} />} onClick={save} loading={saving} disabled={!anyTexture}>
+        <Button color="orange" leftSection={<Flask size={16} />} onClick={save} loading={saving} disabled={total <= 0}>
           Save test
         </Button>
       </Stack>
     </AppModal>
+  );
+}
+
+function PctTile({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <Text fw={700} size="xl" lh={1.1}>{value ?? "—"}%</Text>
+      <Text size="xs" c="dimmed">{label}</Text>
+    </div>
   );
 }
 
