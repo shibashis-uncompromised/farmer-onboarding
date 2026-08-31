@@ -11,7 +11,7 @@ import { useDisclosure } from "@mantine/hooks";
 import {
   Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
   Flask, ClockCounterClockwise, PencilSimple, CalendarBlank, DeviceMobile, Users, Drop,
-  Warning, PawPrint, Tractor, TrendUp, Sun, Shield,
+  Warning, PawPrint, Tractor, TrendUp, Sun, Shield, Wrench,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -26,7 +26,7 @@ import { apiElevation, type ElevationPoint } from "@/lib/api";
 import type {
   Farmer, Farm, Plot, SessionLocation, BoundaryPoint, SoilSample, SoilTextureTest, WaterTDSTest,
   MobileCoverage, FarmShape, FarmerFocus, WaterSource, IrrigationAvailable, Season, KnownIssue,
-  AnimalPressure, Accessibility, BenchmarkComparison, PreviousCropProduction,
+  AnimalPressure, Accessibility, BenchmarkComparison, PreviousCropProduction, FarmTool,
   Gradient, WaterloggingProbability, SunlightAvailability, FencingAvailability,
 } from "@/lib/types";
 import { softDeletePlot } from "@/lib/softDelete";
@@ -47,15 +47,15 @@ const SHAPE_OPTS = [
 ];
 const SHAPE_LABEL: Record<string, string> = Object.fromEntries(SHAPE_OPTS.map((o) => [o.value, o.label]));
 
-// Familiar, direct frequency labels — this is the SUPERVISOR's required
-// visit cadence for this farm, not how often the farmer themselves works it.
+// Familiar, direct frequency labels — this is the FARMER's visit cadence
+// for this farm.
 const FARMER_FOCUS_OPTS = [
   { value: "daily", label: "Daily" }, { value: "twice_weekly", label: "Twice a week" }, { value: "weekly_plus", label: "Weekly or less" },
 ];
 const FARMER_FOCUS_DESCRIPTIONS: Record<FarmerFocus, string> = {
-  daily: "Daily — supervisor should check in on this farm every day.",
-  twice_weekly: "Twice a week — supervisor should check in on this farm a couple of times a week.",
-  weekly_plus: "Weekly or less — supervisor can check in on this farm about once a week or less often.",
+  daily: "Daily — farmer visits this farm every day.",
+  twice_weekly: "Twice a week — farmer visits this farm a couple of times a week.",
+  weekly_plus: "Weekly or less — farmer visits this farm about once a week or less often.",
 };
 const WATER_SOURCE_OPTS = [
   { value: "rainfed", label: "Rainfed" }, { value: "borewell", label: "Borewell" },
@@ -81,7 +81,7 @@ function asIrrigationArray(v: unknown): IrrigationAvailable[] {
   return v ? [v as IrrigationAvailable] : [];
 }
 const SEASON_OPTS = [
-  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" },
+  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" }, { value: "other", label: "Other" },
 ];
 const KNOWN_ISSUE_OPTS = [
   { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
@@ -102,19 +102,42 @@ const ACCESSIBILITY_DESCRIPTIONS: Record<Accessibility, string> = {
   small_machinery: "Only smaller machinery fits — power tiller, mini tractor, etc.",
   hand_tools: "No machinery access — hand tools only",
 };
+// Tools/equipment the farmer has access to for working this farm.
+const TOOL_OPTS = [
+  { value: "tractor", label: "Tractor" }, { value: "power_tiller", label: "Power tiller" },
+  { value: "pump_set", label: "Pump set" }, { value: "sprayer", label: "Sprayer" },
+  { value: "thresher", label: "Thresher" }, { value: "plough", label: "Plough" },
+  { value: "hand_tools", label: "Hand tools" }, { value: "other", label: "Other" },
+];
 const BENCHMARK_OPTS = [
   { value: "above", label: "Above average" }, { value: "at", label: "About average" }, { value: "below", label: "Below average" },
 ];
+// Slope, measured/estimated as a percentage grade (rise/run).
 const GRADIENT_OPTS = [
-  { value: "flat", label: "Flat" }, { value: "slight", label: "Slight slope (<5%)" },
-  { value: "significant", label: "Significant slope (>10%)" },
+  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" },
+  { value: "10_30", label: "10%–30%" }, { value: "gt_30", label: ">30%" },
 ];
+const GRADIENT_DESCRIPTIONS: Record<Gradient, string> = {
+  lt_5: "Flat to gently sloping — barely noticeable incline",
+  "5_10": "Slightly sloped — a mild, easy-to-walk incline",
+  "10_30": "Moderately steep — a clearly noticeable slope",
+  gt_30: "Steep — a sharp incline",
+};
 const WATERLOGGING_OPTS = [
   { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
 ];
+// Sunlight availability, as the approximate % of the day the plot gets direct sun.
 const SUNLIGHT_OPTS = [
-  { value: "unobstructed", label: "Unobstructed" }, { value: "partial", label: "Partial (>80%)" }, { value: "low", label: "Low (<75%)" },
+  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" }, { value: "10_30", label: "10%–30%" },
+  { value: "30_50", label: "30%–50%" }, { value: "gt_50", label: ">50%" },
 ];
+const SUNLIGHT_DESCRIPTIONS: Record<SunlightAvailability, string> = {
+  lt_5: "Heavy shade — almost no direct sun reaches the plot",
+  "5_10": "Mostly shaded — only brief direct sun",
+  "10_30": "Partly shaded — some direct sun through the day",
+  "30_50": "Fairly sunny — direct sun for a good part of the day",
+  gt_50: "Full sun — direct sunlight most of the day",
+};
 const FENCING_OPTS = [
   { value: "none", label: "None" }, { value: "natural", label: "Natural" }, { value: "stone_pitch", label: "Stone pitch" },
   { value: "wire_fence", label: "Wire fence" }, { value: "boundary_wall", label: "Boundary wall" },
@@ -190,7 +213,7 @@ function estimateGradientFromBoundary(points: BoundaryPoint[]): GradientEstimate
   if (run < 3) return null;   // too close together to estimate reliably
 
   const percent = (rise / run) * 100;
-  const gradient: Gradient = percent < 2 ? "flat" : percent <= 10 ? "slight" : "significant";
+  const gradient: Gradient = percent < 5 ? "lt_5" : percent <= 10 ? "5_10" : percent <= 30 ? "10_30" : "gt_30";
   return { gradient, percent: Math.round(percent * 10) / 10 };
 }
 
@@ -921,14 +944,19 @@ function FarmDetailModal(
         )}
 
         {(farm.farmerFocus || asWaterSourceArray(farm.waterSource).length || asIrrigationArray(farm.irrigationAvailable).length || (farm.seasonsPossible?.length) || (farm.knownIssues?.length) ||
-          farm.previousCrop || farm.previousCropProduction || (farm.animalPressure?.length) || farm.accessibility) && (
+          farm.previousCrop || farm.previousCropProduction || (farm.animalPressure?.length) || farm.accessibility || (farm.toolsAvailable?.length)) && (
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Users size={16} /> From farmer</Group></Text>
             <Stack gap={2}>
               {farm.farmerFocus && <Text size="xs" c="dimmed">{FARMER_FOCUS_DESCRIPTIONS[farm.farmerFocus]}</Text>}
               {!!asWaterSourceArray(farm.waterSource).length && <Text size="xs" c="dimmed">Water source: {asWaterSourceArray(farm.waterSource).map((s) => labelOf(WATER_SOURCE_OPTS, s)).join(", ")}</Text>}
               {!!asIrrigationArray(farm.irrigationAvailable).length && <Text size="xs" c="dimmed">Irrigation: {asIrrigationArray(farm.irrigationAvailable).map((s) => labelOf(IRRIGATION_OPTS, s)).join(", ")}</Text>}
-              {!!farm.seasonsPossible?.length && <Text size="xs" c="dimmed">Seasons: {farm.seasonsPossible.map((s) => labelOf(SEASON_OPTS, s)).join(", ")}</Text>}
+              {!!farm.seasonsPossible?.length && (
+                <Text size="xs" c="dimmed">
+                  Seasons: {farm.seasonsPossible.map((s) => labelOf(SEASON_OPTS, s)).join(", ")}
+                  {farm.seasonsPossible.includes("other") && farm.seasonsPossibleOther ? ` (${farm.seasonsPossibleOther})` : ""}
+                </Text>
+              )}
               {!!farm.knownIssues?.length && (
                 <Text size="xs" c="dimmed">
                   Known issues: {farm.knownIssues.map((s) => labelOf(KNOWN_ISSUE_OPTS, s)).join(", ")}
@@ -942,6 +970,12 @@ function FarmDetailModal(
                 </Text>
               )}
               {farm.accessibility && <Text size="xs" c="dimmed">{ACCESSIBILITY_DESCRIPTIONS[farm.accessibility]}</Text>}
+              {!!farm.toolsAvailable?.length && (
+                <Text size="xs" c="dimmed">
+                  Tools available: {farm.toolsAvailable.map((s) => labelOf(TOOL_OPTS, s)).join(", ")}
+                  {farm.toolsAvailable.includes("other") && farm.toolsAvailableOther ? ` (${farm.toolsAvailableOther})` : ""}
+                </Text>
+              )}
               {farm.previousCrop && <Text size="xs" c="dimmed">Previous crop: {farm.previousCrop}</Text>}
               {farm.previousCropProduction && (
                 <Text size="xs" c="dimmed">
@@ -957,9 +991,9 @@ function FarmDetailModal(
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><TrendUp size={16} /> Supervisor observation</Group></Text>
             <Stack gap={2}>
-              {farm.gradient && <Text size="xs" c="dimmed">Gradient: {labelOf(GRADIENT_OPTS, farm.gradient)}</Text>}
+              {farm.gradient && <Text size="xs" c="dimmed">Gradient: {labelOf(GRADIENT_OPTS, farm.gradient)} — {GRADIENT_DESCRIPTIONS[farm.gradient]}</Text>}
               {farm.waterloggingProbability && <Text size="xs" c="dimmed">Waterlogging probability: {labelOf(WATERLOGGING_OPTS, farm.waterloggingProbability)}</Text>}
-              {farm.sunlightAvailability && <Text size="xs" c="dimmed">Sunlight: {labelOf(SUNLIGHT_OPTS, farm.sunlightAvailability)}</Text>}
+              {farm.sunlightAvailability && <Text size="xs" c="dimmed">Sunlight: {labelOf(SUNLIGHT_OPTS, farm.sunlightAvailability)} — {SUNLIGHT_DESCRIPTIONS[farm.sunlightAvailability]}</Text>}
               {farm.fencingAvailability && <Text size="xs" c="dimmed">Fencing: {labelOf(FENCING_OPTS, farm.fencingAvailability)}</Text>}
             </Stack>
           </Paper>
@@ -1220,6 +1254,7 @@ function AddFarmModal(
   const [waterSource, setWaterSource] = useState<WaterSource[]>([]);
   const [irrigationAvailable, setIrrigationAvailable] = useState<IrrigationAvailable[]>([]);
   const [seasonsPossible, setSeasonsPossible] = useState<Season[]>([]);
+  const [seasonsPossibleOther, setSeasonsPossibleOther] = useState("");
   const [knownIssues, setKnownIssues] = useState<KnownIssue[]>([]);
   const [knownIssuesOther, setKnownIssuesOther] = useState("");
   const [previousCrop, setPreviousCrop] = useState("");
@@ -1228,6 +1263,8 @@ function AddFarmModal(
   const [animalPressure, setAnimalPressure] = useState<AnimalPressure[]>([]);
   const [animalPressureOther, setAnimalPressureOther] = useState("");
   const [accessibility, setAccessibility] = useState<Accessibility | "">("");
+  const [toolsAvailable, setToolsAvailable] = useState<FarmTool[]>([]);
+  const [toolsAvailableOther, setToolsAvailableOther] = useState("");
 
   // ---- Supervisor Observation ----
   const [gradient, setGradient] = useState<Gradient | "">("");
@@ -1336,6 +1373,7 @@ function AddFarmModal(
       setWaterSource(asWaterSourceArray(editFarm.waterSource));
       setIrrigationAvailable(asIrrigationArray(editFarm.irrigationAvailable));
       setSeasonsPossible(editFarm.seasonsPossible ?? []);
+      setSeasonsPossibleOther(editFarm.seasonsPossibleOther ?? "");
       setKnownIssues(editFarm.knownIssues ?? []);
       setKnownIssuesOther(editFarm.knownIssuesOther ?? "");
       setPreviousCrop(editFarm.previousCrop ?? "");
@@ -1344,6 +1382,8 @@ function AddFarmModal(
       setAnimalPressure(editFarm.animalPressure ?? []);
       setAnimalPressureOther(editFarm.animalPressureOther ?? "");
       setAccessibility(editFarm.accessibility ?? "");
+      setToolsAvailable(editFarm.toolsAvailable ?? []);
+      setToolsAvailableOther(editFarm.toolsAvailableOther ?? "");
       setGradient(editFarm.gradient ?? "");
       setWaterloggingProbability(editFarm.waterloggingProbability ?? "");
       setSunlightAvailability(editFarm.sunlightAvailability ?? "");
@@ -1353,8 +1393,9 @@ function AddFarmModal(
       setTreeCountBig(""); setTreeCountSmall(""); setMobileCoverage("");
       setShapeOverride(""); setPlotSizeOverride("");
       setFarmerFocus(""); setWaterSource([]); setIrrigationAvailable([]);
-      setSeasonsPossible([]); setKnownIssues([]); setKnownIssuesOther(""); setPreviousCrop("");
+      setSeasonsPossible([]); setSeasonsPossibleOther(""); setKnownIssues([]); setKnownIssuesOther(""); setPreviousCrop("");
       setPrevCropQuintals(""); setPrevCropBenchmark(""); setAnimalPressure([]); setAnimalPressureOther(""); setAccessibility("");
+      setToolsAvailable([]); setToolsAvailableOther("");
       setGradient(""); setWaterloggingProbability(""); setSunlightAvailability(""); setFencingAvailability("");
     }
   }, [opened, editFarm]);
@@ -1386,6 +1427,7 @@ function AddFarmModal(
         waterSource,
         irrigationAvailable,
         seasonsPossible,
+        seasonsPossibleOther: seasonsPossible.includes("other") ? (seasonsPossibleOther.trim() || undefined) : undefined,
         knownIssues,
         knownIssuesOther: knownIssues.includes("other") ? (knownIssuesOther.trim() || undefined) : undefined,
         previousCrop: previousCrop.trim() || undefined,
@@ -1393,6 +1435,8 @@ function AddFarmModal(
         animalPressure,
         animalPressureOther: animalPressure.includes("other") ? (animalPressureOther.trim() || undefined) : undefined,
         accessibility: (accessibility || null) as Accessibility | null,
+        toolsAvailable,
+        toolsAvailableOther: toolsAvailable.includes("other") ? (toolsAvailableOther.trim() || undefined) : undefined,
         gradient: (gradient || null) as Gradient | null,
         waterloggingProbability: (waterloggingProbability || null) as WaterloggingProbability | null,
         sunlightAvailability: (sunlightAvailability || null) as SunlightAvailability | null,
@@ -1505,10 +1549,10 @@ function AddFarmModal(
         <Stack gap="sm">
           <SectionDivider icon={<Users size={14} />} label="From farmer" />
           <div>
-            <Text size="sm" fw={500} mb={6}>Supervisor visit frequency</Text>
+            <Text size="sm" fw={500} mb={6}>Farmer visit frequency</Text>
             <SegmentedControl fullWidth value={farmerFocus} onChange={(v) => setFarmerFocus(v as FarmerFocus)} data={FARMER_FOCUS_OPTS} />
             <Text size="xs" c="dimmed" mt={4}>
-              {farmerFocus ? FARMER_FOCUS_DESCRIPTIONS[farmerFocus] : "How often does the supervisor need to check in on this farm?"}
+              {farmerFocus ? FARMER_FOCUS_DESCRIPTIONS[farmerFocus] : "How often does the farmer visit this farm?"}
             </Text>
           </div>
           <div>
@@ -1527,13 +1571,18 @@ function AddFarmModal(
             <MultiSelect placeholder="Select all that apply"
               data={IRRIGATION_OPTS} value={irrigationAvailable} onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} comboboxProps={{ withinPortal: true }} />
           </div>
-          <MultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
-            data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
+          <div>
+            <MultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
+              data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
+            {seasonsPossible.includes("other") && (
+              <Textarea mt={6} placeholder="Please specify the season" value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} autosize minRows={2} />
+            )}
+          </div>
           <div>
             <MultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
               data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
             {knownIssues.includes("other") && (
-              <TextInput mt={6} placeholder="Please specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} />
+              <Textarea mt={6} placeholder="Please specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
@@ -1544,7 +1593,7 @@ function AddFarmModal(
             <MultiSelect placeholder="Select all that apply"
               data={ANIMAL_PRESSURE_OPTS} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
             {animalPressure.includes("other") && (
-              <TextInput mt={6} placeholder="Please specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} />
+              <Textarea mt={6} placeholder="Please specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
@@ -1553,6 +1602,17 @@ function AddFarmModal(
             <Text size="xs" c="dimmed" mt={4}>
               {accessibility ? ACCESSIBILITY_DESCRIPTIONS[accessibility] : "What can physically get onto this plot?"}
             </Text>
+          </div>
+          <div>
+            <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Wrench size={16} /> Tools available to farmer</Group></Text>
+              <SelectAllToggle options={TOOL_OPTS.map((o) => o.value as FarmTool)} value={toolsAvailable} onChange={setToolsAvailable} />
+            </Group>
+            <MultiSelect placeholder="Select all that apply"
+              data={TOOL_OPTS} value={toolsAvailable} onChange={(v) => setToolsAvailable(v as FarmTool[])} comboboxProps={{ withinPortal: true }} />
+            {toolsAvailable.includes("other") && (
+              <Textarea mt={6} placeholder="Please specify" value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} autosize minRows={2} />
+            )}
           </div>
           <Autocomplete
             label="Previous crop" placeholder="Select or type previous crop" leftSection={<Plant size={16} />}
@@ -1570,17 +1630,20 @@ function AddFarmModal(
           <SimpleGridTwo>
             <div>
               <Select
-                label="Gradient" leftSection={<TrendUp size={16} />}
+                label="Gradient (slope)" leftSection={<TrendUp size={16} />}
                 clearable
                 placeholder="Select, or walk 3+ boundary points to auto-detect"
                 data={GRADIENT_OPTS} value={gradient || null}
                 onChange={(v) => { gradientTouched.current = true; setGradient((v as Gradient) || ""); }}
                 comboboxProps={{ withinPortal: true }} />
+              <Text size="xs" c="dimmed" mt={4}>
+                {gradient ? GRADIENT_DESCRIPTIONS[gradient] : "How steep is this plot?"}
+              </Text>
               {!gradientTouched.current && elevationLoading && boundary.length >= 3 && !gradientEstimate && (
-                <Text size="xs" c="dimmed" mt={4}>Fetching elevation data…</Text>
+                <Text size="xs" c="dimmed" mt={2}>Fetching elevation data…</Text>
               )}
               {boundary.length >= 3 && !gradientTouched.current && gradientEstimate && (
-                <Text size="xs" c="dimmed" mt={4}>
+                <Text size="xs" c="dimmed" mt={2}>
                   Auto-filled ~{gradientEstimate.percent}% from {usingApiElevation ? "Google elevation data" : "boundary GPS altitude"} — tap to override
                 </Text>
               )}
@@ -1589,8 +1652,13 @@ function AddFarmModal(
               data={WATERLOGGING_OPTS} value={waterloggingProbability || null} onChange={(v) => setWaterloggingProbability((v as WaterloggingProbability) || "")} comboboxProps={{ withinPortal: true }} />
           </SimpleGridTwo>
           <SimpleGridTwo>
-            <Select label="Sunlight availability" placeholder="Select" leftSection={<Sun size={16} />} clearable
-              data={SUNLIGHT_OPTS} value={sunlightAvailability || null} onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+            <div>
+              <Select label="Sunlight availability" placeholder="Select" leftSection={<Sun size={16} />} clearable
+                data={SUNLIGHT_OPTS} value={sunlightAvailability || null} onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+              <Text size="xs" c="dimmed" mt={4}>
+                {sunlightAvailability ? SUNLIGHT_DESCRIPTIONS[sunlightAvailability] : "What share of the day does this plot get direct sunlight?"}
+              </Text>
+            </div>
             <Select label="Fencing availability" placeholder="Select" leftSection={<Shield size={16} />} clearable
               data={FENCING_OPTS} value={fencingAvailability || null} onChange={(v) => setFencingAvailability((v as FencingAvailability) || "")} comboboxProps={{ withinPortal: true }} />
           </SimpleGridTwo>
