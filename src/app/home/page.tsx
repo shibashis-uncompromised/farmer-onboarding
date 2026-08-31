@@ -9,7 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode, Trash, Flask,
+  QrCode, Trash, Flask, Clock,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -24,6 +24,20 @@ import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode, isReservedImportedFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
+
+// Short "time ago" label for the farmer tile's last-updated stamp.
+function timeAgo(ts?: number): string {
+  if (!ts) return "";
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+}
 
 function HomeInner() {
   const router = useRouter();
@@ -49,6 +63,7 @@ function HomeInner() {
   }, [villages, village]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "lead" | "existing">("all");
+  const [sortBy, setSortBy] = useState<"recent" | "oldest" | "name">("recent");
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
@@ -92,7 +107,7 @@ function HomeInner() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (farmers || []).filter((f) => {
+    const list = (farmers || []).filter((f) => {
       // Type filter: treat a missing farmerType as "existing" (the default).
       if (typeFilter !== "all" && (f.farmerType || "existing") !== typeFilter) return false;
       if (!q) return true;
@@ -103,7 +118,16 @@ function HomeInner() {
         f.phone.includes(q)
       );
     });
-  }, [farmers, search, typeFilter]);
+    const sorted = [...list];
+    if (sortBy === "name") {
+      sorted.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+    } else if (sortBy === "oldest") {
+      sorted.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
+    } else {
+      sorted.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));   // recent first
+    }
+    return sorted;
+  }, [farmers, search, typeFilter, sortBy]);
 
   const doExport = async () => {
     setExporting(true);
@@ -262,17 +286,27 @@ function HomeInner() {
       </Box>
 
       <Container size="sm" py="md">
+        <TextInput
+          placeholder="Search by name, C/o, ID or phone" value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)} size="md" radius="md" mb="sm"
+          leftSection={<MagnifyingGlass size={18} />}
+        />
         <Group gap="sm" mb="md" wrap="nowrap" align="flex-start">
-          <TextInput
-            placeholder="Search by name, C/o, ID or phone" value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)} size="md" radius="md"
-            leftSection={<MagnifyingGlass size={18} />} style={{ flex: 1 }}
-          />
           <Select
             value={typeFilter} onChange={(v) => setTypeFilter((v as "all" | "lead" | "existing") || "all")}
             data={[{ value: "all", label: "All" }, { value: "lead", label: "Leads" }, { value: "existing", label: "Existing" }]}
-            allowDeselect={false} checkIconPosition="right" size="md" radius="md" w={130}
-            aria-label="Filter by type"
+            allowDeselect={false} checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
+            leftSection={<UsersThree size={16} />} aria-label="Filter by type"
+          />
+          <Select
+            value={sortBy} onChange={(v) => setSortBy((v as "recent" | "oldest" | "name") || "recent")}
+            data={[
+              { value: "recent", label: "Recently updated" },
+              { value: "oldest", label: "Oldest first" },
+              { value: "name", label: "Name (A–Z)" },
+            ]}
+            allowDeselect={false} checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
+            leftSection={<Clock size={16} />} aria-label="Sort by"
           />
         </Group>
 
@@ -311,6 +345,12 @@ function HomeInner() {
                         <Text size="sm" c="dimmed" truncate>
                           {co ? `C/o ${co}` : f.id}
                         </Text>
+                        {f.updatedAt && (
+                          <Group gap={4} mt={2} wrap="nowrap" c="dimmed">
+                            <Clock size={12} />
+                            <Text size="xs">Updated {timeAgo(f.updatedAt)}</Text>
+                          </Group>
+                        )}
                       </Box>
                       <CaretRight size={18} color="var(--mantine-color-gray-5)" />
                     </Group>
