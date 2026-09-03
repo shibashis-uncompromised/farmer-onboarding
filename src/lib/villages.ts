@@ -12,6 +12,7 @@ export interface Village {
   region: string;   // state/region — also the ID prefix: "RJ" (Rajasthan) | "MP" (Madhya Pradesh)
   state: string;    // Neoperk state (exact enum): "Rajasthan" | "Madhya Pradesh" | "Gujarat"
   district: string; // Neoperk district (exact enum spelling for that state's project)
+  createdBy?: string; // set on user-created villages (preset villages leave this undefined)
 }
 
 // Default region prefix (kept for back-compat; villages now carry their own).
@@ -43,7 +44,20 @@ export const DISTRICTS_BY_STATE: Record<string, string[]> = {
   "Gujarat": ["Ahmadabad","Amreli","Anand","Banas Kantha","Bharuch","Bhavnagar","Dohad","Gandhinagar","Jamnagar","Junagadh","Kachchh","Kheda","Mahesana","Narmada","Navsari","Panch Mahals","Patan","Porbandar","Rajkot","Sabar Kantha","Surat","Surendranagar","Tapi","The Dangs","Vadodara","Valsad"],
 };
 
-export const villageByCode = (code: string) => VILLAGES.find((v) => v.code === code);
+// ---- User-created villages (dynamic) ----
+// Preset villages above are static; villages created in the field are held in a
+// module-level cache so the many SYNCHRONOUS callers (villageByCode, dropdowns,
+// exports) keep working. The cache is refreshed from IndexedDB by <VillageCache/>
+// (mounted in Providers) whenever the local villages table changes.
+let dynamicVillages: Village[] = [];
+export function setDynamicVillages(list: Village[]) { dynamicVillages = list; }
+export function getDynamicVillages(): Village[] { return dynamicVillages; }
+
+// All villages the app knows about right now (preset + user-created).
+export const allVillages = (): Village[] => [...VILLAGES, ...dynamicVillages];
+
+export const villageByCode = (code: string): Village | undefined =>
+  VILLAGES.find((v) => v.code === code) || dynamicVillages.find((v) => v.code === code);
 
 // ---- Per-user village scoping (UI-only) ----
 // Which region(s) each user may see. Unlisted users default to RJ, so existing
@@ -65,8 +79,14 @@ export function regionsForUser(username: string | null | undefined): string[] {
 }
 
 export function villagesForUser(username: string | null | undefined): Village[] {
-  const allow = USER_VILLAGES[(username || "").toLowerCase()];
-  if (allow) return VILLAGES.filter((v) => allow.includes(v.code));
-  const regions = regionsForUser(username);
-  return VILLAGES.filter((v) => regions.includes(v.region));
+  const uname = (username || "").toLowerCase();
+  const isAdmin = uname === "admin";
+  // Preset villages: per-user allowlist wins, else region scoping.
+  const allow = USER_VILLAGES[uname];
+  const preset = allow
+    ? VILLAGES.filter((v) => allow.includes(v.code))
+    : VILLAGES.filter((v) => regionsForUser(username).includes(v.region));
+  // User-created villages: visible to the creator and to admin.
+  const custom = dynamicVillages.filter((v) => isAdmin || (v.createdBy || "").toLowerCase() === uname);
+  return [...preset, ...custom];
 }

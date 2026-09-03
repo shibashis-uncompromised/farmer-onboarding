@@ -71,8 +71,8 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 2) push local farmer/farm/plot changes (include successfully uploaded media)
   // Best-effort: a push failure must NOT stop the pull below, so viewing
   // server data never depends on the upload/push succeeding.
-  const [lf, lfm, lp, lss, lst, lwt] = await Promise.all([
-    db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray(), db.soilTextureTests.toArray(), db.waterTDSTests.toArray(),
+  const [lf, lfm, lp, lss, lst, lwt, lv] = await Promise.all([
+    db.farmers.toArray(), db.farms.toArray(), db.plots.toArray(), db.soilSamples.toArray(), db.soilTextureTests.toArray(), db.waterTDSTests.toArray(), db.villages.toArray(),
   ]);
   const uf = lf.filter((x) => !x.synced);
   const um = lfm.filter((x) => !x.synced);
@@ -80,6 +80,7 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   const uss = lss.filter((x) => !x.synced);
   const ust = lst.filter((x) => !x.synced);
   const uwt = lwt.filter((x) => !x.synced);
+  const uv = lv.filter((x) => !x.synced);
   let pushed = 0;
 
   async function pushTable<T extends { id: string }>(
@@ -107,6 +108,19 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   await pushTable("soilTextureTests", db.soilTextureTests, ust);
   await pushTable("waterTDSTests", db.waterTDSTests, uwt);
 
+  // Villages are keyed by `code` (not `id`), so push them directly.
+  for (const chunk of chunksOf(uv)) {
+    try {
+      await apiSync(token, { villages: chunk });
+      await db.transaction("rw", db.villages, async () => {
+        for (const x of chunk) await db.villages.update(x.code, { synced: true } as any);
+      });
+      pushed += chunk.length;
+    } catch (e) {
+      console.warn("Push failed for villages batch — will retry next sync:", e);
+    }
+  }
+
   let mediaPushed = 0;
   for (const chunk of chunksOf(syncedMediaPayload)) {
     try {
@@ -123,13 +137,22 @@ export async function syncAll(): Promise<{ pushed: number; pulled: number }> {
   // 3) pull the full server set + merge (network call OUTSIDE the tx)
   const server = await apiPull(token);
   let pulled = 0;
-  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests], async () => {
+  await db.transaction("rw", [db.farmers, db.farms, db.plots, db.soilSamples, db.soilTextureTests, db.waterTDSTests, db.villages], async () => {
     pulled += await mergeTable(db.farmers as any, server.farmers as any);
     pulled += await mergeTable(db.farms as any, server.farms as any);
     pulled += await mergeTable(db.plots as any, server.plots as any);
     pulled += await mergeTable(db.soilSamples as any, server.soilSamples as any);
     pulled += await mergeTable(db.soilTextureTests as any, server.soilTextureTests as any);
     pulled += await mergeTable(db.waterTDSTests as any, server.waterTDSTests as any);
+    // Villages keyed by `code`, last-write-wins by updatedAt.
+    for (const r of (server.villages as any[]) || []) {
+      if (!r || !r.code) continue;
+      const local = await db.villages.get(r.code);
+      if (!local || (r.updatedAt || 0) > (local.updatedAt || 0)) {
+        await db.villages.put({ ...r, synced: true });
+        pulled++;
+      }
+    }
   });
 
   // 4) Media blobs. Field devices already hold the photos THEY captured (local),

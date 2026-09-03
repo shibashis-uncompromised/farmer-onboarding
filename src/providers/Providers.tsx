@@ -4,6 +4,20 @@ import { useEffect } from "react";
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { theme } from "@/lib/theme";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { setDynamicVillages } from "@/lib/villages";
+
+// Mirrors user-created villages from IndexedDB into the villages.ts cache, so
+// the app's synchronous village lookups include them. Renders nothing.
+function VillageCache() {
+  useLiveQuery(async () => {
+    const rows = (await db.villages.toArray()).filter((v) => !v.deleted);
+    setDynamicVillages(rows as any);
+    return rows.length;
+  }, []);
+  return null;
+}
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -58,6 +72,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <MantineProvider theme={theme} defaultColorScheme="light">
       <Notifications position="top-center" />
+      <VillageCache />
       {children}
     </MantineProvider>
   );

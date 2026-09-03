@@ -15,6 +15,23 @@ export interface SeedPackage {
   qty: number;
 }
 
+// A user-created village. Static preset villages live in villages.ts; these are
+// added in the field, synced, and visible to their creator + admin only.
+export interface CustomVillage {
+  code: string;        // unique key (e.g. "v_ab12cd") — used as villageCode on records
+  name: string;
+  block: string;
+  idCode: string;      // ID abbreviation for human IDs: <REGION>-<idCode>-U###
+  region: string;      // "RJ" | "MP" | "GJ"
+  state: string;       // Neoperk state
+  district: string;    // Neoperk district
+  createdBy: string;   // username of the creator
+  createdAt: number;
+  updatedAt: number;
+  synced: boolean;
+  deleted?: boolean;
+}
+
 export interface Farmer {
   id: string;            // RJ{village}U{seq}  e.g. RJ001U001
   villageCode: string;   // "001"

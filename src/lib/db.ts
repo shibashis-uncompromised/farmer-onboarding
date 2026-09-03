@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { Farmer, Farm, Plot, Media, SoilSample, SoilTextureTest, WaterTDSTest } from "./types";
+import type { Farmer, Farm, Plot, Media, SoilSample, SoilTextureTest, WaterTDSTest, CustomVillage } from "./types";
 
 // Local-first store. Swapping/adding a backend later = add a sync layer that
 // reads rows where `synced === false` and pushes them.
@@ -11,6 +11,7 @@ export class AppDB extends Dexie {
   soilSamples!: Table<SoilSample, string>;
   soilTextureTests!: Table<SoilTextureTest, string>;
   waterTDSTests!: Table<WaterTDSTest, string>;
+  villages!: Table<CustomVillage, string>;
 
   constructor() {
     super("farmer-onboarding");
@@ -57,6 +58,18 @@ export class AppDB extends Dexie {
       soilSamples: "id, farmId, farmerId, synced, createdAt",
       soilTextureTests: "id, plotId, farmId, farmerId, synced, createdAt",
       waterTDSTests: "id, plotId, farmId, farmerId, synced, createdAt",
+    });
+    // v6: add user-created villages (keyed by code). Additive — existing
+    // stores & data untouched; preset villages still come from villages.ts.
+    this.version(6).stores({
+      farmers: "id, villageCode, bioComplete, updatedAt, lastName, firstName",
+      farms: "id, farmerId, villageCode, updatedAt",
+      plots: "id, farmId, farmerId, updatedAt",
+      media: "id, synced, createdAt",
+      soilSamples: "id, farmId, farmerId, synced, createdAt",
+      soilTextureTests: "id, plotId, farmId, farmerId, synced, createdAt",
+      waterTDSTests: "id, plotId, farmId, farmerId, synced, createdAt",
+      villages: "code, createdBy, synced, updatedAt",
     });
   }
 }

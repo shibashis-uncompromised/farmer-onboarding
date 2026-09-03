@@ -8,17 +8,18 @@ import {
 } from "@mantine/core";
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
-  CaretRight, UsersThree, MapPin, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
+  CaretRight, UsersThree, MapPin, MapPinPlus, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
   QrCode, Trash, Flask, Clock,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import SessionGate, { useSession } from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { villageByCode, villagesForUser } from "@/lib/villages";
+import { villageByCode, villagesForUser, setDynamicVillages } from "@/lib/villages";
 import { computeStatus } from "@/lib/status";
 import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
+import CreateVillageModal from "@/components/CreateVillageModal";
 import AppModal from "@/components/AppModal";
 import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode, isReservedImportedFarmerCode } from "@/lib/qr";
@@ -42,8 +43,16 @@ function timeAgo(ts?: number): string {
 function HomeInner() {
   const router = useRouter();
   const { user, location, syncState, syncNow } = useSession();
-  // Villages this user may see (RJ users see RJ villages, mpfield sees MP).
-  const villages = useMemo(() => villagesForUser(user.username), [user.username]);
+  const [createVillageOpen, setCreateVillageOpen] = useState(false);
+  // Villages this user may see: preset (region/allowlist) + user-created ones
+  // (own + admin). The live query keeps the dropdown reactive as villages are
+  // created or synced, and refreshes the shared cache the rest of the app reads.
+  const dynVillages = useLiveQuery(async () => (await db.villages.toArray()).filter((v) => !v.deleted), []);
+  const villages = useMemo(() => {
+    if (dynVillages) setDynamicVillages(dynVillages as any);
+    return villagesForUser(user.username);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.username, dynVillages]);
   // Persist the selected village so it survives navigation/reload (and offline).
   const [village, setVillageState] = useState<string>(() => {
     try { return localStorage.getItem("fo_selected_village") || ""; }
@@ -249,6 +258,9 @@ function HomeInner() {
                 <Menu.Item leftSection={<Flask size={16} />} onClick={() => router.push("/scan-sample/")}>
                   Scan sample
                 </Menu.Item>
+                <Menu.Item leftSection={<MapPinPlus size={16} />} onClick={() => setCreateVillageOpen(true)}>
+                  New village
+                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncState === "syncing"}
                   rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
@@ -269,13 +281,20 @@ function HomeInner() {
             </Group>
           </Group>
 
-          <Select
-            data={villages.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
-            value={village || null} onChange={(v) => v && setVillage(v)} allowDeselect={false}
-            checkIconPosition="right" size="md" radius="md"
-            leftSection={<MapPin size={18} />}
-            styles={{ input: { fontWeight: 600 } }}
-          />
+          <Group gap="xs" wrap="nowrap" align="center">
+            <Select
+              data={villages.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
+              value={village || null} onChange={(v) => v && setVillage(v)} allowDeselect={false}
+              checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
+              leftSection={<MapPin size={18} />}
+              styles={{ input: { fontWeight: 600 } }}
+            />
+            <Button variant="white" color="dark" size="md" radius="md" px="sm"
+              leftSection={<MapPinPlus size={18} />} onClick={() => setCreateVillageOpen(true)}
+              styles={{ label: { fontSize: 13 } }}>
+              New village
+            </Button>
+          </Group>
           {location && (
             <Group gap={6} mt={6} c="green.1">
               <MapPin size={13} />
@@ -382,6 +401,11 @@ function HomeInner() {
         opened={addOpen} onClose={() => { setAddOpen(false); setScannedCode(null); }} defaultVillage={village}
         scannedCode={scannedCode}
         onCreated={(id) => router.push(`/farmer/?id=${encodeURIComponent(id)}`)}
+      />
+
+      <CreateVillageModal
+        opened={createVillageOpen} onClose={() => setCreateVillageOpen(false)}
+        onCreated={(code) => { setVillage(code); syncNow().catch(() => {}); }}
       />
 
       <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data">
