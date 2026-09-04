@@ -85,23 +85,25 @@ export interface AdminUser {
   created_at: string;
 }
 
-const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
-
+// NOTE: the token rides in the JSON body (not just the Authorization header),
+// same reason apiSync/apiPull/apiAllocate do it — CloudFront strips the
+// Authorization header but always forwards the body. Listing uses the POST
+// alias (not the plain GET) because a body isn't reliably forwarded on GET.
 export const apiListUsers = (token: string): Promise<{ users: AdminUser[] }> =>
-  req("/api/admin/users", { headers: authHeaders(token) });
+  req("/api/admin/users/list", { method: "POST", body: JSON.stringify({ token }) });
 
 export const apiCreateUser = (
   token: string,
   body: { username: string; password: string; role: Role }
 ): Promise<{ user: AdminUser }> =>
-  req("/api/admin/users", { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) });
+  req("/api/admin/users", { method: "POST", body: JSON.stringify({ token, ...body }) });
 
 export const apiUpdateUser = (
   token: string,
   id: number,
   body: { username?: string; password?: string; role?: Role }
 ): Promise<{ user: AdminUser }> =>
-  req(`/api/admin/users/${id}`, { method: "PUT", headers: authHeaders(token), body: JSON.stringify(body) });
+  req(`/api/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ token, ...body }) });
 
 export const apiDeleteUser = (token: string, id: number): Promise<{ ok: true }> =>
-  req(`/api/admin/users/${id}`, { method: "DELETE", headers: authHeaders(token) });
+  req(`/api/admin/users/${id}`, { method: "DELETE", body: JSON.stringify({ token }) });
