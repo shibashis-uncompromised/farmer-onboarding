@@ -1,9 +1,11 @@
 import { apiAllocate } from "./api";
+import type { Role } from "./api";
 
 export interface Block { start: number; end: number; }
 export interface Session {
   token: string;
   username: string;
+  role: Role;
   blockSize: number;
   blocks: Block[];
   used: number;        // how many IDs consumed from the blocks (persisted locally)

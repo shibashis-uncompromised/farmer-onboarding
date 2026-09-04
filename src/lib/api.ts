@@ -31,9 +31,12 @@ async function req(path: string, opts: RequestInit = {}, timeoutMs = 8000) {
   return res.json();
 }
 
+export type Role = "admin" | "reviewer" | "poc";
+
 export interface LoginResp {
   token: string;
   username: string;
+  role: Role;
   blockSize: number;
   blocks: { start: number; end: number }[];
 }
@@ -73,3 +76,32 @@ export const apiElevation = (
   points: { lat: number; lng: number }[]
 ): Promise<{ elevations: ElevationPoint[] }> =>
   req("/api/elevation", { method: "POST", body: JSON.stringify({ token, points }) }, 8000);
+
+// ---- Admin: user management ----
+export interface AdminUser {
+  id: number;
+  username: string;
+  role: Role;
+  created_at: string;
+}
+
+const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+export const apiListUsers = (token: string): Promise<{ users: AdminUser[] }> =>
+  req("/api/admin/users", { headers: authHeaders(token) });
+
+export const apiCreateUser = (
+  token: string,
+  body: { username: string; password: string; role: Role }
+): Promise<{ user: AdminUser }> =>
+  req("/api/admin/users", { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) });
+
+export const apiUpdateUser = (
+  token: string,
+  id: number,
+  body: { username?: string; password?: string; role?: Role }
+): Promise<{ user: AdminUser }> =>
+  req(`/api/admin/users/${id}`, { method: "PUT", headers: authHeaders(token), body: JSON.stringify(body) });
+
+export const apiDeleteUser = (token: string, id: number): Promise<{ ok: true }> =>
+  req(`/api/admin/users/${id}`, { method: "DELETE", headers: authHeaders(token) });
