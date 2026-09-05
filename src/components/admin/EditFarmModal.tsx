@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import {
-  Button, Divider, Group, MultiSelect, NumberInput, Select, Stack, Text, TextInput,
+  Button, Divider, Group, NumberInput, Select, Stack, Text, TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
+import AutoCloseMultiSelect from "@/components/AutoCloseMultiSelect";
 import { apiDirectUpdateEntityVersion } from "@/lib/api";
 import { getSession } from "@/lib/session";
 import { PREVIOUS_CROPS } from "@/lib/crops";
@@ -175,16 +176,16 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
           <Divider label="From farmer" labelPosition="left" />
           <Select label="Farmer's visit frequency" data={FARMER_FOCUS_OPTS} value={farmerFocus || null} clearable
             onChange={(v) => setFarmerFocus((v as FarmerFocus) || "")} />
-          <MultiSelect label="Water source" data={WATER_SOURCE_OPTS} value={waterSource}
+          <AutoCloseMultiSelect label="Water source" data={WATER_SOURCE_OPTS} value={waterSource}
             onChange={(v) => setWaterSource(v as WaterSource[])} />
-          <MultiSelect label="Irrigation available" data={IRRIGATION_OPTS} value={irrigationAvailable}
+          <AutoCloseMultiSelect label="Irrigation available" data={IRRIGATION_OPTS} value={irrigationAvailable}
             onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} />
-          <MultiSelect label="Seasons possible" data={SEASON_OPTS} value={seasonsPossible}
+          <AutoCloseMultiSelect label="Seasons possible" data={SEASON_OPTS} value={seasonsPossible}
             onChange={(v) => setSeasonsPossible(v as Season[])} />
           {seasonsPossible.includes("other" as Season) && (
             <TextInput label="Seasons — other, specify" value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} />
           )}
-          <MultiSelect label="Known issues" data={KNOWN_ISSUE_OPTS} value={knownIssues}
+          <AutoCloseMultiSelect label="Known issues" data={KNOWN_ISSUE_OPTS} value={knownIssues}
             onChange={(v) => setKnownIssues(v as KnownIssue[])} />
           {knownIssues.includes("other" as KnownIssue) && (
             <TextInput label="Known issues — other, specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} />
@@ -197,14 +198,14 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
             <Select label="Vs. benchmark" data={BENCHMARK_OPTS} value={prevBenchmark || null} clearable
               onChange={(v) => setPrevBenchmark((v as BenchmarkComparison) || "")} />
           </Group>
-          <MultiSelect label="Animal pressure" data={ANIMAL_PRESSURE_OPTS} value={animalPressure}
+          <AutoCloseMultiSelect label="Animal pressure" data={ANIMAL_PRESSURE_OPTS} value={animalPressure}
             onChange={(v) => setAnimalPressure(v as AnimalPressure[])} />
           {animalPressure.includes("other" as AnimalPressure) && (
             <TextInput label="Animal pressure — other, specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} />
           )}
           <Select label="Accessibility" data={ACCESSIBILITY_OPTS} value={accessibility || null} clearable
             onChange={(v) => setAccessibility((v as Accessibility) || "")} />
-          <MultiSelect label="Tools available" data={TOOL_OPTS} value={toolsAvailable}
+          <AutoCloseMultiSelect label="Tools available" data={TOOL_OPTS} value={toolsAvailable}
             onChange={(v) => setToolsAvailable(v as FarmTool[])} />
           {toolsAvailable.includes("other" as FarmTool) && (
             <TextInput label="Tools — other, specify" value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} />

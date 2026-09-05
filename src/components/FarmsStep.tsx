@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Divider, Group, Image, Loader, MultiSelect, NumberInput, Paper,
+  ActionIcon, Autocomplete, Badge, Box, Button, Card, Center, Divider, Group, Image, Loader, NumberInput, Paper,
   SegmentedControl, Select, SimpleGrid, Stack, Text, Textarea, TextInput, ThemeIcon, Timeline, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
+import AutoCloseMultiSelect from "@/components/AutoCloseMultiSelect";
 import { db } from "@/lib/db";
 import { nextFarmId, nextPlotId, uid } from "@/lib/ids";
 import { getBestLocation, getLastLocation, fmtCoord } from "@/lib/location";
@@ -1637,7 +1638,7 @@ function AddFarmModal(
               <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Water source</Group></Text>
               <SelectAllToggle options={WATER_SOURCE_OPTS.map((o) => o.value as WaterSource)} value={waterSource} onChange={setWaterSource} />
             </Group>
-            <MultiSelect placeholder="Select all that apply"
+            <AutoCloseMultiSelect placeholder="Select all that apply"
               data={WATER_SOURCE_OPTS} value={waterSource} onChange={(v) => setWaterSource(v as WaterSource[])} comboboxProps={{ withinPortal: true }} />
           </div>
           <div>
@@ -1645,18 +1646,18 @@ function AddFarmModal(
               <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Irrigation available</Group></Text>
               <SelectAllToggle options={IRRIGATION_OPTS.map((o) => o.value as IrrigationAvailable)} value={irrigationAvailable} onChange={setIrrigationAvailable} />
             </Group>
-            <MultiSelect placeholder="Select all that apply"
+            <AutoCloseMultiSelect placeholder="Select all that apply"
               data={IRRIGATION_OPTS} value={irrigationAvailable} onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} comboboxProps={{ withinPortal: true }} />
           </div>
           <div>
-            <MultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
+            <AutoCloseMultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
               data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
             {seasonsPossible.includes("other") && (
               <Textarea mt={6} placeholder="Please specify the season" value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
-            <MultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
+            <AutoCloseMultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
               data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
             {knownIssues.includes("other") && (
               <Textarea mt={6} placeholder="Please specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} autosize minRows={2} />
@@ -1667,7 +1668,7 @@ function AddFarmModal(
               <Text size="sm" fw={500}><Group gap={6} component="span"><PawPrint size={16} /> Animal pressure</Group></Text>
               <SelectAllToggle options={ANIMAL_PRESSURE_OPTS.map((o) => o.value as AnimalPressure)} value={animalPressure} onChange={setAnimalPressure} />
             </Group>
-            <MultiSelect placeholder="Select all that apply"
+            <AutoCloseMultiSelect placeholder="Select all that apply"
               data={ANIMAL_PRESSURE_OPTS} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
             {animalPressure.includes("other") && (
               <Textarea mt={6} placeholder="Please specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} autosize minRows={2} />
@@ -1685,7 +1686,7 @@ function AddFarmModal(
               <Text size="sm" fw={500}><Group gap={6} component="span"><Wrench size={16} /> Tools available to farmer</Group></Text>
               <SelectAllToggle options={TOOL_OPTS.map((o) => o.value as FarmTool)} value={toolsAvailable} onChange={setToolsAvailable} />
             </Group>
-            <MultiSelect placeholder="Select all that apply"
+            <AutoCloseMultiSelect placeholder="Select all that apply"
               data={TOOL_OPTS} value={toolsAvailable} onChange={(v) => setToolsAvailable(v as FarmTool[])} comboboxProps={{ withinPortal: true }} />
             {toolsAvailable.includes("other") && (
               <Textarea mt={6} placeholder="Please specify" value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} autosize minRows={2} />
