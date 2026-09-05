@@ -146,3 +146,17 @@ export const apiListEntityVersions = (
   filters: EntityVersionFilters = {}
 ): Promise<{ versions: EntityVersion[]; total: number }> =>
   req("/api/admin/entity-versions/list", { method: "POST", body: JSON.stringify({ token, ...filters }) });
+
+// Admin's own direct edit to an entity's dynamic fields — skips the pending
+// queue entirely and becomes the current version immediately (see the
+// direct: true path of submitEntityVersion on the backend).
+export interface DirectUpdatePayload {
+  entityType: EntityType;
+  entityId: string;
+  dynamicData: Record<string, any>;
+}
+export const apiDirectUpdateEntityVersion = (
+  token: string,
+  payload: DirectUpdatePayload
+): Promise<{ ok: true }> =>
+  req("/api/admin/entity-versions/direct-update", { method: "POST", body: JSON.stringify({ token, ...payload }) });
