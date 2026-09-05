@@ -11,7 +11,7 @@ import {
   apiListEntityVersions, type EntityVersion, type EntityType, type VersionStatus,
 } from "@/lib/api";
 import { getSession } from "@/lib/session";
-import { dynamicFieldRows, fieldLabel, formatFieldValue } from "@/lib/dynamicFieldMeta";
+import { diffDynamicFields, dynamicFieldRows, fieldLabel, formatFieldValue } from "@/lib/dynamicFieldMeta";
 
 // Read-only history of every dynamic-field version across farmers, farms and
 // plots. There is no edit/approve/reject action here on purpose — this page
@@ -40,13 +40,21 @@ function fmtDate(ms: number | string | null | undefined) {
   return new Date(n).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// Compact one-line preview of a version's dynamic-field snapshot for the
-// table row, using real field/value labels — the full breakdown is available
-// via the "view" action.
-function summarize(data: Record<string, any>) {
-  const rows = dynamicFieldRows(data);
-  if (rows.length === 0) return "—";
-  const text = rows.map(([k, v]) => `${fieldLabel(k)}: ${formatFieldValue(k, v)}`).join(" · ");
+// Compact one-line preview of what this version actually CHANGED relative
+// to the version right before it (not just a re-listing of every field it
+// carries) — the full before/after breakdown is available via "view".
+function summarize(row: EntityVersion) {
+  const diff = diffDynamicFields(row.data, row.previous_data);
+  if (diff.length === 0) return row.version_no === 1 ? "—" : "No changes recorded";
+  const text = diff
+    .map(({ key, before, after }) => {
+      const afterText = formatFieldValue(key, after);
+      const beforeText = formatFieldValue(key, before);
+      if (beforeText === "—") return `${fieldLabel(key)}: ${afterText}`;
+      if (afterText === "—") return `${fieldLabel(key)}: cleared`;
+      return `${fieldLabel(key)}: ${beforeText} → ${afterText}`;
+    })
+    .join(" · ");
   return text.length > 90 ? text.slice(0, 90) + "…" : text;
 }
 
@@ -210,7 +218,7 @@ export default function AdminVersionsPage() {
                       <Badge color={STATUS_COLOR[v.status]} variant="light">{STATUS_LABEL[v.status]}</Badge>
                     </Table.Td>
                     <Table.Td maw={320}>
-                      <Text size="sm" c="dimmed" truncate>{summarize(v.data)}</Text>
+                      <Text size="sm" c="dimmed" truncate>{summarize(v)}</Text>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm">{v.submitted_by || "—"}</Text>
@@ -272,12 +280,57 @@ export default function AdminVersionsPage() {
               </Paper>
             )}
 
-            <Divider label="What was submitted" labelPosition="left" />
-            {dynamicFieldRows(detail.data).length === 0 ? (
-              <Text size="sm" c="dimmed">No dynamic fields were recorded for this version.</Text>
-            ) : (
-              <ScrollArea.Autosize mah={360}>
+            <Divider label={detail.version_no === 1 ? "Initial values" : "What changed from the previous version"} labelPosition="left" />
+            {(() => {
+              const diff = diffDynamicFields(detail.data, detail.previous_data);
+              if (diff.length === 0) {
+                return (
+                  <Text size="sm" c="dimmed">
+                    {detail.version_no === 1 ? "No dynamic fields were recorded for this version." : "No changes recorded relative to the previous version."}
+                  </Text>
+                );
+              }
+              return (
                 <Table verticalSpacing={8} withRowBorders={false}>
+                  <Table.Tbody>
+                    {diff.map(({ key, before, after }) => {
+                      const afterText = formatFieldValue(key, after);
+                      const beforeText = formatFieldValue(key, before);
+                      return (
+                        <Table.Tr key={key}>
+                          <Table.Td w="38%" style={{ verticalAlign: "top" }}>
+                            <Text size="sm" c="dimmed">{fieldLabel(key)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {beforeText === "—" ? (
+                              <Text size="sm" fw={500}>{afterText}</Text>
+                            ) : afterText === "—" ? (
+                              <Group gap={6} wrap="nowrap">
+                                <Text size="sm" td="line-through" c="dimmed">{beforeText}</Text>
+                                <Badge size="xs" color="red" variant="light">cleared</Badge>
+                              </Group>
+                            ) : (
+                              <Group gap={6} wrap="wrap">
+                                <Text size="sm" c="dimmed" td="line-through">{beforeText}</Text>
+                                <Text size="sm" c="dimmed">→</Text>
+                                <Text size="sm" fw={500}>{afterText}</Text>
+                              </Group>
+                            )}
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              );
+            })()}
+
+            <Divider label="Full snapshot at this version" labelPosition="left" />
+            {dynamicFieldRows(detail.data).length === 0 ? (
+              <Text size="sm" c="dimmed">No dynamic fields recorded.</Text>
+            ) : (
+              <ScrollArea.Autosize mah={280}>
+                <Table verticalSpacing={6} withRowBorders={false}>
                   <Table.Tbody>
                     {dynamicFieldRows(detail.data).map(([k, v]) => (
                       <Table.Tr key={k}>

@@ -175,3 +175,39 @@ export function dynamicFieldRows(data: Record<string, unknown> | null | undefine
   });
   return entries;
 }
+
+function isEmptyValue(v: unknown): boolean {
+  return v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
+}
+
+export interface DynamicFieldDiffRow {
+  key: string;
+  before: unknown;
+  after: unknown;
+}
+
+// Fields that actually changed between one version's data and the version
+// immediately before it (`previous`, from the API's previous_data — null for
+// the very first version, in which case every non-empty field on `current`
+// counts as newly set rather than "changed").
+export function diffDynamicFields(
+  current: Record<string, unknown> | null | undefined,
+  previous: Record<string, unknown> | null | undefined
+): DynamicFieldDiffRow[] {
+  const cur = current || {};
+  const prev = previous || {};
+  const keys = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+  const rows: DynamicFieldDiffRow[] = [];
+  for (const key of keys) {
+    const after = (cur as Record<string, unknown>)[key];
+    const before = (prev as Record<string, unknown>)[key];
+    if (isEmptyValue(after) && isEmptyValue(before)) continue;
+    if (JSON.stringify(after ?? null) === JSON.stringify(before ?? null)) continue;
+    rows.push({ key, before, after });
+  }
+  rows.sort((a, b) => {
+    const ia = DISPLAY_ORDER.indexOf(a.key), ib = DISPLAY_ORDER.indexOf(b.key);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+  return rows;
+}

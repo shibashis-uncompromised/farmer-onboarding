@@ -119,6 +119,10 @@ export interface EntityVersion {
   version_no: number;
   status: VersionStatus;
   data: Record<string, any>;
+  // The same entity's immediately-prior version (version_no - 1), regardless
+  // of its own status — null for version 1. Used to show what actually
+  // changed rather than re-listing the whole current snapshot.
+  previous_data: Record<string, any> | null;
   submitted_by: string | null;
   // BIGINT columns come back from the pg driver as strings, not numbers —
   // callers should coerce with Number(...) before treating these as epoch ms.
