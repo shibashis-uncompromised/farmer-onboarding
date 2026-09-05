@@ -31,7 +31,15 @@ import type {
   Gradient, WaterloggingProbability, SunlightAvailability, FencingAvailability,
 } from "@/lib/types";
 import { softDeletePlot } from "@/lib/softDelete";
-import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
+import { CROPS, PREVIOUS_CROPS, cropLabel } from "@/lib/crops";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/en";
+import {
+  mobileCoverageOpts, shapeOpts, farmerFocusOpts, waterSourceOpts, irrigationOpts, seasonOpts,
+  knownIssueOpts, animalPressureOpts, accessibilityOpts, toolOpts, benchmarkOpts, gradientOpts,
+  waterloggingOpts, sunlightOpts, fencingOpts,
+  WATER_SOURCE_VALUES, IRRIGATION_VALUES, ANIMAL_PRESSURE_VALUES, TOOL_VALUES,
+} from "@/lib/dynamicFieldMeta";
 import { useMediaUrl } from "@/lib/useMediaUrl";
 import PhotoInput from "./PhotoInput";
 import MultiPhotoInput, { type PhotoItem } from "./MultiPhotoInput";
@@ -39,111 +47,45 @@ import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
 import MapErrorBoundary from "./MapErrorBoundary";
 
-// ---- Option lists for the new data-collection fields (grouped by who fills them in) ----
-const MOBILE_COVERAGE_OPTS = [
-  { value: "good", label: "Good" }, { value: "weak", label: "Weak" }, { value: "none", label: "None" },
-];
-const SHAPE_OPTS = [
-  { value: "rectangle", label: "Rectangle" }, { value: "square", label: "Square" },
-  { value: "trapezoid", label: "Trapezoid" }, { value: "irregular", label: "Irregular" },
-];
-const SHAPE_LABEL: Record<string, string> = Object.fromEntries(SHAPE_OPTS.map((o) => [o.value, o.label]));
-
-// Familiar, direct frequency labels — this is the FARMER's visit cadence
-// for this farm.
-const FARMER_FOCUS_OPTS = [
-  { value: "daily", label: "Daily" }, { value: "twice_weekly", label: "Twice a week" }, { value: "weekly_plus", label: "Weekly or less" },
-];
-const FARMER_FOCUS_DESCRIPTIONS: Record<FarmerFocus, string> = {
-  daily: "Daily — farmer visits this farm every day.",
-  twice_weekly: "Twice a week — farmer visits this farm a couple of times a week.",
-  weekly_plus: "Weekly or less — farmer visits this farm about once a week or less often.",
-};
-const WATER_SOURCE_OPTS = [
-  { value: "rainfed", label: "Rainfed" }, { value: "borewell", label: "Borewell" },
-  { value: "open_well", label: "Open well" }, { value: "farm_pond", label: "Farm pond" },
-  { value: "anicut_river", label: "Anicut / River" },
-];
-// Water Source used to be a single value — tolerate farms saved under that
-// old shape (a bare string) as well as the current array shape, since JSONB
-// rows from before this change aren't retroactively migrated.
+// ---- Water/Irrigation used to be a single value — tolerate farms saved under
+// that old shape (a bare string) as well as the current array shape, since
+// JSONB rows from before this change aren't retroactively migrated.
 function asWaterSourceArray(v: unknown): WaterSource[] {
   if (Array.isArray(v)) return v as WaterSource[];
   return v ? [v as WaterSource] : [];
 }
-const IRRIGATION_OPTS = [
-  { value: "none", label: "None" }, { value: "flood", label: "Flood" },
-  { value: "sprinkler", label: "Sprinkler" }, { value: "drip", label: "Drip" },
-];
-// Irrigation Available used to be a single value — tolerate farms saved under
-// that old shape (a bare string) as well as the current array shape, since
-// JSONB rows from before this change aren't retroactively migrated.
 function asIrrigationArray(v: unknown): IrrigationAvailable[] {
   if (Array.isArray(v)) return v as IrrigationAvailable[];
   return v ? [v as IrrigationAvailable] : [];
 }
-const SEASON_OPTS = [
-  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" }, { value: "other", label: "Other" },
-];
-const KNOWN_ISSUE_OPTS = [
-  { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
-  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" }, { value: "other", label: "Other" },
-];
-const ANIMAL_PRESSURE_OPTS = [
-  { value: "nilgai", label: "Nilgai" }, { value: "boar", label: "Boar" }, { value: "monkey", label: "Monkey" },
-  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" }, { value: "other", label: "Other" },
-];
-const ACCESSIBILITY_OPTS = [
-  { value: "tractor", label: "Tractor" }, { value: "small_machinery", label: "Small machinery" },
-  { value: "hand_tools", label: "Hand tools only" },
-];
-// Spelled-out meaning shown under the control as the fieldworker picks —
-// mirrors the FARMER_FOCUS_DESCRIPTIONS pattern (short label, clear meaning).
-const ACCESSIBILITY_DESCRIPTIONS: Record<Accessibility, string> = {
-  tractor: "Full-size tractor can reach the plot — clear access road, no obstructions",
-  small_machinery: "Only smaller machinery fits — power tiller, mini tractor, etc.",
-  hand_tools: "No machinery access — hand tools only",
+
+// ---- Descriptive text shown under a few of the dynamic-field controls below
+// — short explanatory sentences that go beyond dynamicFieldMeta's short
+// option labels, so each value gets its own translation key here. Looked up
+// as e.g. `t(FARMER_FOCUS_DESC_KEY[farmerFocus])` at the call site.
+const FARMER_FOCUS_DESC_KEY: Record<FarmerFocus, TranslationKey> = {
+  daily: "farms_farmerFocusDesc_daily",
+  twice_weekly: "farms_farmerFocusDesc_twice_weekly",
+  weekly_plus: "farms_farmerFocusDesc_weekly_plus",
 };
-// Tools/equipment the farmer has access to for working this farm.
-const TOOL_OPTS = [
-  { value: "tractor", label: "Tractor" }, { value: "power_tiller", label: "Power tiller" },
-  { value: "pump_set", label: "Pump set" }, { value: "sprayer", label: "Sprayer" },
-  { value: "thresher", label: "Thresher" }, { value: "plough", label: "Plough" },
-  { value: "hand_tools", label: "Hand tools" }, { value: "other", label: "Other" },
-];
-const BENCHMARK_OPTS = [
-  { value: "above", label: "Above average" }, { value: "at", label: "About average" }, { value: "below", label: "Below average" },
-];
-// Slope, measured/estimated as a percentage grade (rise/run).
-const GRADIENT_OPTS = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" },
-  { value: "10_30", label: "10%–30%" }, { value: "gt_30", label: ">30%" },
-];
-const GRADIENT_DESCRIPTIONS: Record<Gradient, string> = {
-  lt_5: "Flat to gently sloping — barely noticeable incline",
-  "5_10": "Slightly sloped — a mild, easy-to-walk incline",
-  "10_30": "Moderately steep — a clearly noticeable slope",
-  gt_30: "Steep — a sharp incline",
+const ACCESSIBILITY_DESC_KEY: Record<Accessibility, TranslationKey> = {
+  tractor: "farms_accessibilityDesc_tractor",
+  small_machinery: "farms_accessibilityDesc_small_machinery",
+  hand_tools: "farms_accessibilityDesc_hand_tools",
 };
-const WATERLOGGING_OPTS = [
-  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
-];
-// Sunlight availability, as the approximate % of the day the plot gets direct sun.
-const SUNLIGHT_OPTS = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" }, { value: "10_30", label: "10%–30%" },
-  { value: "30_50", label: "30%–50%" }, { value: "gt_50", label: ">50%" },
-];
-const SUNLIGHT_DESCRIPTIONS: Record<SunlightAvailability, string> = {
-  lt_5: "Heavy shade — almost no direct sun reaches the plot",
-  "5_10": "Mostly shaded — only brief direct sun",
-  "10_30": "Partly shaded — some direct sun through the day",
-  "30_50": "Fairly sunny — direct sun for a good part of the day",
-  gt_50: "Full sun — direct sunlight most of the day",
+const GRADIENT_DESC_KEY: Record<Gradient, TranslationKey> = {
+  lt_5: "farms_gradientDesc_lt5",
+  "5_10": "farms_gradientDesc_5to10",
+  "10_30": "farms_gradientDesc_10to30",
+  gt_30: "farms_gradientDesc_gt30",
 };
-const FENCING_OPTS = [
-  { value: "none", label: "None" }, { value: "natural", label: "Natural" }, { value: "stone_pitch", label: "Stone pitch" },
-  { value: "wire_fence", label: "Wire fence" }, { value: "boundary_wall", label: "Boundary wall" },
-];
+const SUNLIGHT_DESC_KEY: Record<SunlightAvailability, TranslationKey> = {
+  lt_5: "farms_sunlightDesc_lt5",
+  "5_10": "farms_sunlightDesc_5to10",
+  "10_30": "farms_sunlightDesc_10to30",
+  "30_50": "farms_sunlightDesc_30to50",
+  gt_50: "farms_sunlightDesc_gt50",
+};
 const labelOf = (opts: { value: string; label: string }[], v?: string | null) => opts.find((o) => o.value === v)?.label || null;
 
 // ---- Derived shape/size from a walked boundary (flat-earth approximation, fine at plot scale) ----
@@ -235,6 +177,7 @@ const FarmBoundaryPreview = dynamic(() => import("./FarmBoundaryPreview"), {
 });
 
 export default function FarmsStep({ farmer }: { farmer: Farmer }) {
+  const { t } = useLanguage();
   const farms = useLiveQuery(async () => (await db.farms.where("farmerId").equals(farmer.id).toArray()).filter((x) => !x.deleted), [farmer.id]);
   const plots = useLiveQuery(async () => (await db.plots.where("farmerId").equals(farmer.id).toArray()).filter((x) => !x.deleted), [farmer.id]);
   const [farmOpen, farmModal] = useDisclosure(false);
@@ -246,15 +189,15 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
           <ThemeIcon size={48} radius="xl" variant="light" color="green" mx="auto" mb="sm">
             <Tree size={28} weight="duotone" />
           </ThemeIcon>
-          <Text c="dimmed" mb="md">No farms added yet</Text>
-          <Button leftSection={<Plus size={18} />} onClick={farmModal.open}>Add farm</Button>
+          <Text c="dimmed" mb="md">{t("farms_noFarmsYet")}</Text>
+          <Button leftSection={<Plus size={18} />} onClick={farmModal.open}>{t("farms_addFarm")}</Button>
         </Paper>
       ) : (
         <>
           {(farms || []).map((farm) => (
             <FarmCard key={farm.id} farm={farm} plots={(plots || []).filter((p) => p.farmId === farm.id)} />
           ))}
-          <Button variant="light" leftSection={<Plus size={18} />} onClick={farmModal.open}>Add another farm</Button>
+          <Button variant="light" leftSection={<Plus size={18} />} onClick={farmModal.open}>{t("farms_addAnotherFarm")}</Button>
         </>
       )}
 
@@ -265,6 +208,7 @@ export default function FarmsStep({ farmer }: { farmer: Farmer }) {
 
 function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const { syncNow } = useSession();
+  const { t } = useLanguage();
   const [plotOpen, plotModal] = useDisclosure(false);
   const [editPlot, setEditPlot] = useState<Plot | null>(null);
   const [scanOpen, scanModal] = useDisclosure(false);
@@ -294,17 +238,17 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
     manualModal.close();
     if (!code) return;
     if (looksLikeFarmerCode(code)) {
-      notifications.show({ color: "red", message: `${code} is a farmer QR — not a soil sample` });
+      notifications.show({ color: "red", message: t("farms_notSoilSampleQr", { code }) });
       return;
     }
     if (!looksLikeSoilCode(code)) {
-      notifications.show({ color: "red", message: `Invalid soil code: ${code} (expected e.g. RJ-AMOD-SA001)` });
+      notifications.show({ color: "red", message: t("scanSample_invalidSoilCode", { code }) });
       return;
     }
     const allSamples = await db.soilSamples.toArray();
     const dup = allSamples.find((s) => !s.deleted && s.code.toUpperCase() === code.toUpperCase());
     if (dup) {
-      notifications.show({ color: "blue", message: `Sample ${code} is already added` });
+      notifications.show({ color: "blue", message: t("farms_sampleAlreadyAdded", { code }) });
       return;
     }
     setPendingCode(code.toUpperCase());
@@ -333,7 +277,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         createdAt: now, updatedAt: now, synced: false,
       });
       await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
-      notifications.show({ color: "green", message: `Soil sample ${code} added` });
+      notifications.show({ color: "green", message: t("farms_soilSampleAdded", { code }) });
       syncNow().catch(() => {});
 
       getBestLocation({ targetAccuracy: 10, maxWait: 20000 })
@@ -350,7 +294,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         })
         .catch(() => {});
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save soil sample" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotSaveSoilSample") });
     }
   };
 
@@ -359,35 +303,26 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <Group justify="space-between" mb="xs">
         <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
         <Group gap={6}>
-          <Text size="xs" c="dimmed">{plots.length} plot{plots.length === 1 ? "" : "s"}</Text>
-          <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label="Edit farm">
+          <Text size="xs" c="dimmed">{t("farms_plotCount", { n: plots.length })}</Text>
+          <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label={t("farms_editFarm")}>
             <PencilSimple size={15} />
           </ActionIcon>
         </Group>
       </Group>
       {/* Tapping the card body opens the farm's detail view */}
       <UnstyledButton w="100%" onClick={detailModal.open} aria-label="Farm details">
-        {url && (
-          <Box pos="relative" mb="xs">
-            <Image src={url} h={120} radius="sm" fit="cover" alt="farm" />
-            {(farm.photoIds?.length ?? 0) > 1 && (
-              <Badge color="dark" variant="filled" size="sm" style={{ position: "absolute", top: 6, right: 6 }}>
-                {farm.photoIds!.length} photos
-              </Badge>
-            )}
-          </Box>
-        )}
+        {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
         <Group gap={6} mb="sm">
           <MapPinLine size={15} color="var(--mantine-color-green-7)" />
           <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
           {farm.boundary && farm.boundary.length > 0 && (
             <Badge variant="light" color="green" size="sm" leftSection={<Polygon size={11} weight="fill" />}>
-              {farm.boundary.length}-pt boundary
+              {t("farms_boundaryPtBadge", { n: farm.boundary.length })}
             </Badge>
           )}
           {(soilSamples?.length ?? 0) > 0 && (
             <Badge variant="light" color="orange" size="sm" leftSection={<Flask size={11} weight="fill" />}>
-              {soilSamples!.length} soil
+              {t("farms_soilBadge", { n: soilSamples!.length })}
             </Badge>
           )}
         </Group>
@@ -407,15 +342,15 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <Group mt="sm" gap={6} grow wrap="nowrap">
         <Button size="xs" variant="light" leftSection={<Plus size={14} />} onClick={plotModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
-          Add plot
+          {t("farms_addPlot")}
         </Button>
         <Button size="xs" variant="light" color="orange" leftSection={<Flask size={14} />} onClick={scanModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
-          Soil sample
+          {t("farms_soilSample")}
         </Button>
         <Button size="xs" variant="light" color="gray" leftSection={<ClockCounterClockwise size={14} />} onClick={samplesModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
-          Samples
+          {t("farms_samplesButton")}
         </Button>
       </Group>
 
@@ -458,37 +393,38 @@ function PlotRow(
   );
   const soilTestCount = soilTests?.length ?? 0;
   const waterTestCount = waterTests?.length ?? 0;
+  const { t, language } = useLanguage();
   return (
     <Paper withBorder radius="sm" p={8} bg="gray.0">
       <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-        <UnstyledButton onClick={onEdit} aria-label={`Edit plot ${plot.seq}`} style={{ flex: 1, minWidth: 0 }}>
+        <UnstyledButton onClick={onEdit} aria-label={t("farms_editPlotAria", { seq: plot.seq })} style={{ flex: 1, minWidth: 0 }}>
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
             <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Text size="sm" fw={600} truncate>{plot.crop || "—"}</Text>
+              <Text size="sm" fw={600} truncate>{plot.crop ? cropLabel(plot.crop, language) : "—"}</Text>
               {(waterTestCount > 0 || soilTestCount > 0) && (
                 <Group gap={4} wrap="wrap" mt={2}>
                   {waterTestCount > 0 && (
                     <Badge size="xs" variant="light" color="teal" leftSection={<Drop size={10} weight="fill" />}>
-                      {waterTestCount} water
+                      {t("farms_waterBadge", { n: waterTestCount })}
                     </Badge>
                   )}
                   {soilTestCount > 0 && (
                     <Badge size="xs" variant="light" color="orange" leftSection={<Flask size={10} weight="fill" />}>
-                      {soilTestCount} soil
+                      {t("farms_soilBadge", { n: soilTestCount })}
                     </Badge>
                   )}
                 </Group>
               )}
-              <Text size="xs" c="dimmed" mt={2} truncate>Plot {plot.seq}{plot.sowingDate ? ` · sown ${plot.sowingDate}` : ""} · {fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
+              <Text size="xs" c="dimmed" mt={2} truncate>{t("farms_plotN", { seq: plot.seq })}{plot.sowingDate ? ` · ${t("farms_sownOn", { date: plot.sowingDate })}` : ""} · {fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
             </div>
             <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
           </Group>
         </UnstyledButton>
-        <ActionIcon variant="subtle" color="teal" size="md" onClick={onOpenWaterTests} aria-label={`Water TDS tests for plot ${plot.seq}`}>
+        <ActionIcon variant="subtle" color="teal" size="md" onClick={onOpenWaterTests} aria-label={t("farms_waterTestsAria", { seq: plot.seq })}>
           <Drop size={15} />
         </ActionIcon>
-        <ActionIcon variant="subtle" color="orange" size="md" onClick={onOpenSoilTests} aria-label={`Soil type tests for plot ${plot.seq}`}>
+        <ActionIcon variant="subtle" color="orange" size="md" onClick={onOpenSoilTests} aria-label={t("farms_soilTestsAria", { seq: plot.seq })}>
           <Flask size={15} />
         </ActionIcon>
       </Group>
@@ -508,40 +444,41 @@ function SoilSamplesModal(
     onManual: () => void;
   }
 ) {
+  const { t } = useLanguage();
   const sorted = [...samples].sort((a, b) => b.createdAt - a.createdAt);
   const fmtWhen = (n: number) =>
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   // "Today", "Yesterday", or the date — friendlier for surveyors.
   const dayLabel = (n: number) => {
-    const d = new Date(n), t = new Date();
-    const y = new Date(); y.setDate(t.getDate() - 1);
+    const d = new Date(n), today = new Date();
+    const y = new Date(); y.setDate(today.getDate() - 1);
     const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+    return same(d, today) ? t("farms_today") : same(d, y) ? t("farms_yesterday") : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
   };
 
   return (
     <AppModal opened={opened} onClose={onClose}
-      title={`Soil samples · ${farm.id}${sorted.length ? ` (${sorted.length})` : ""}`}>
+      title={`${t("farms_soilSamplesLabel")} · ${farm.id}${sorted.length ? ` (${sorted.length})` : ""}`}>
       <Stack gap="md">
         {sorted.length === 0 ? (
           <Stack align="center" gap={6} py="lg">
             <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
-            <Text c="dimmed" ta="center">No soil samples yet for this farm</Text>
-            <Text c="dimmed" size="sm">Scan a sample QR or type the printed code to add one</Text>
+            <Text c="dimmed" ta="center">{t("farms_noSoilSamplesYet")}</Text>
+            <Text c="dimmed" size="sm">{t("farms_scanOrTypeSampleHint")}</Text>
           </Stack>
         ) : (
           <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
             {sorted.map((s) => (
               <Timeline.Item key={s.id} bullet={<Flask size={13} weight="fill" />}
                 title={<Group gap={6}><Text fw={700} size="sm">{s.code}</Text>
-                  {!s.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}</Group>}>
+                  {!s.synced && <Badge size="xs" variant="light" color="orange">{t("farms_notSynced")}</Badge>}</Group>}>
                 <Text size="xs" c="dimmed">{dayLabel(s.createdAt)} · {fmtWhen(s.createdAt)}</Text>
                 <Text size="xs" c="dimmed">
                   {s.lat != null && s.lng != null
                     ? <Group gap={4} component="span"><MapPin size={11} /> {fmtCoord(s.lat)}, {fmtCoord(s.lng)}{s.accuracy != null ? ` (±${Math.round(s.accuracy)}m)` : ""}</Group>
-                    : "No location recorded"}
+                    : t("farms_noLocationRecorded")}
                 </Text>
-                {s.pastCrops && <Text size="xs" c="dimmed"><Group gap={4} component="span"><Plant size={11} /> Previous crop: {s.pastCrops}</Group></Text>}
+                {s.pastCrops && <Text size="xs" c="dimmed"><Group gap={4} component="span"><Plant size={11} /> {t("field_previousCrop")}: {s.pastCrops}</Group></Text>}
               </Timeline.Item>
             ))}
           </Timeline>
@@ -549,11 +486,11 @@ function SoilSamplesModal(
         <Group grow gap="sm">
           <Button variant="light" color="orange" leftSection={<Flask size={16} />}
             onClick={() => { onClose(); onScanMore(); }}>
-            Scan QR
+            {t("farms_scanQrButton")}
           </Button>
           <Button variant="light" color="gray" leftSection={<PencilSimple size={16} />}
             onClick={() => { onClose(); onManual(); }}>
-            Type code
+            {t("farms_typeCode")}
           </Button>
         </Group>
       </Stack>
@@ -569,6 +506,7 @@ function SoilTextureTestsModal(
   { opened, onClose, plot, onAddTest }:
   { opened: boolean; onClose: () => void; plot: Plot | null; onAddTest: () => void }
 ) {
+  const { t } = useLanguage();
   const tests = useLiveQuery(
     async (): Promise<SoilTextureTest[]> => plot ? (await db.soilTextureTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted) : [],
     [plot?.id]
@@ -577,40 +515,40 @@ function SoilTextureTestsModal(
   const fmtWhen = (n: number) =>
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   const dayLabel = (n: number) => {
-    const d = new Date(n), t = new Date();
-    const y = new Date(); y.setDate(t.getDate() - 1);
+    const d = new Date(n), today = new Date();
+    const y = new Date(); y.setDate(today.getDate() - 1);
     const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+    return same(d, today) ? t("farms_today") : same(d, y) ? t("farms_yesterday") : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
   };
 
   return (
     <AppModal opened={opened} onClose={onClose}
-      title={plot ? `Soil type tests · Plot ${plot.seq}${sorted.length ? ` (${sorted.length})` : ""}` : "Soil type tests"}>
+      title={plot ? `${t("farms_soilTypeTestsLabel")} · ${t("farms_plotN", { seq: plot.seq })}${sorted.length ? ` (${sorted.length})` : ""}` : t("farms_soilTypeTestsLabel")}>
       <Stack gap="md">
         {sorted.length === 0 ? (
           <Stack align="center" gap={6} py="lg">
             <ThemeIcon size={44} radius="xl" variant="light" color="orange"><Flask size={24} weight="duotone" /></ThemeIcon>
-            <Text c="dimmed" ta="center">No soil type tests yet for this plot</Text>
-            <Text c="dimmed" size="sm">Record clay/sand/silt % each time this plot is tested</Text>
+            <Text c="dimmed" ta="center">{t("farms_noSoilTypeTestsYet")}</Text>
+            <Text c="dimmed" size="sm">{t("farms_recordSoilTextureHint")}</Text>
           </Stack>
         ) : (
           <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="orange">
-            {sorted.map((t) => (
-              <Timeline.Item key={t.id} bullet={<Flask size={13} weight="fill" />}
+            {sorted.map((test) => (
+              <Timeline.Item key={test.id} bullet={<Flask size={13} weight="fill" />}
                 title={<Group gap={6}>
                   <Text fw={700} size="sm">
-                    {t.soilTexture.clayPct ?? "—"}/{t.soilTexture.sandPct ?? "—"}/{t.soilTexture.siltPct ?? "—"}
+                    {test.soilTexture.clayPct ?? "—"}/{test.soilTexture.sandPct ?? "—"}/{test.soilTexture.siltPct ?? "—"}
                   </Text>
-                  {!t.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}
+                  {!test.synced && <Badge size="xs" variant="light" color="orange">{t("farms_notSynced")}</Badge>}
                 </Group>}>
-                <Text size="xs" c="dimmed">{dayLabel(t.createdAt)} · {fmtWhen(t.createdAt)}</Text>
-                <Text size="xs" c="dimmed">Clay {t.soilTexture.clayPct ?? "—"}% · Sand {t.soilTexture.sandPct ?? "—"}% · Silt {t.soilTexture.siltPct ?? "—"}%</Text>
+                <Text size="xs" c="dimmed">{dayLabel(test.createdAt)} · {fmtWhen(test.createdAt)}</Text>
+                <Text size="xs" c="dimmed">{t("farms_clay")} {test.soilTexture.clayPct ?? "—"}% · {t("farms_sand")} {test.soilTexture.sandPct ?? "—"}% · {t("farms_silt")} {test.soilTexture.siltPct ?? "—"}%</Text>
               </Timeline.Item>
             ))}
           </Timeline>
         )}
         <Button variant="light" color="orange" leftSection={<Flask size={16} />} onClick={onAddTest} disabled={!plot}>
-          Add test
+          {t("farms_addTest")}
         </Button>
       </Stack>
     </AppModal>
@@ -639,6 +577,7 @@ function AddSoilTextureTestModal(
   { opened: boolean; onClose: () => void; plot: Plot | null }
 ) {
   const { syncNow } = useSession();
+  const { t } = useLanguage();
   const [clayH, setClayH] = useState<number | "">("");
   const [sandH, setSandH] = useState<number | "">("");
   const [siltH, setSiltH] = useState<number | "">("");
@@ -676,48 +615,48 @@ function AddSoilTextureTestModal(
         createdAt: now, updatedAt: now, synced: false,
       });
       await db.farmers.update(plot.farmerId, { updatedAt: now, synced: false });
-      notifications.show({ color: "green", message: "Soil type test added" });
+      notifications.show({ color: "green", message: t("farms_soilTypeTestAdded") });
       onClose();
       syncNow().catch(() => {});
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save soil type test" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotSaveSoilTypeTest") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={plot ? `Add soil type test · Plot ${plot.seq}` : "Add soil type test"}>
+    <AppModal opened={opened} onClose={onClose} title={plot ? `${t("farms_addSoilTypeTestLabel")} · ${t("farms_plotN", { seq: plot.seq })}` : t("farms_addSoilTypeTestLabel")}>
       <Stack gap="md">
         <div>
           <Group justify="space-between" mb={6}>
-            <Text size="sm" fw={500}>Settled layer heights</Text>
-            <Text size="xs" c="dimmed">Total: {anyHeight ? total : "—"}</Text>
+            <Text size="sm" fw={500}>{t("farms_settledLayerHeights")}</Text>
+            <Text size="xs" c="dimmed">{t("farms_totalLabel")}: {anyHeight ? total : "—"}</Text>
           </Group>
           <SimpleGrid cols={3} spacing="xs">
-            <NumberInput label="Clay height" min={0} value={clayH} onChange={(v) => setClayH(v as number | "")} placeholder="top" />
-            <NumberInput label="Silt height" min={0} value={siltH} onChange={(v) => setSiltH(v as number | "")} placeholder="middle" />
-            <NumberInput label="Sand height" min={0} value={sandH} onChange={(v) => setSandH(v as number | "")} placeholder="bottom" />
+            <NumberInput label={t("farms_clayHeight")} min={0} value={clayH} onChange={(v) => setClayH(v as number | "")} placeholder={t("farms_top")} />
+            <NumberInput label={t("farms_siltHeight")} min={0} value={siltH} onChange={(v) => setSiltH(v as number | "")} placeholder={t("farms_middle")} />
+            <NumberInput label={t("farms_sandHeight")} min={0} value={sandH} onChange={(v) => setSandH(v as number | "")} placeholder={t("farms_bottom")} />
           </SimpleGrid>
-          <Text size="xs" c="dimmed" mt={4}>Measure each settled band (any unit). % is derived below — water/organic layers are not counted.</Text>
+          <Text size="xs" c="dimmed" mt={4}>{t("farms_measureBandsHint")}</Text>
         </div>
 
         <Paper withBorder radius="md" p="sm" bg="gray.0">
-          <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={6}>Derived soil type</Text>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={6}>{t("farms_derivedSoilType")}</Text>
           {total > 0 ? (
             <SimpleGrid cols={3} spacing="xs">
-              <PctTile label="Clay" value={pct.clayPct} />
-              <PctTile label="Silt" value={pct.siltPct} />
-              <PctTile label="Sand" value={pct.sandPct} />
+              <PctTile label={t("farms_clay")} value={pct.clayPct} />
+              <PctTile label={t("farms_silt")} value={pct.siltPct} />
+              <PctTile label={t("farms_sand")} value={pct.sandPct} />
             </SimpleGrid>
           ) : (
-            <Text size="sm" c="dimmed">Enter the layer heights to see the percentages.</Text>
+            <Text size="sm" c="dimmed">{t("farms_enterHeightsHint")}</Text>
           )}
         </Paper>
 
-        <PhotoInput label="Test report (photo/scan, optional)" value={photo} onChange={setPhoto} height={140} />
+        <PhotoInput label={t("farms_testReportPhotoLabel")} value={photo} onChange={setPhoto} height={140} />
         <Button color="orange" leftSection={<Flask size={16} />} onClick={save} loading={saving} disabled={total <= 0}>
-          Save test
+          {t("farms_saveTest")}
         </Button>
       </Stack>
     </AppModal>
@@ -741,6 +680,7 @@ function WaterTDSTestsModal(
   { opened, onClose, plot, onAddTest }:
   { opened: boolean; onClose: () => void; plot: Plot | null; onAddTest: () => void }
 ) {
+  const { t } = useLanguage();
   const tests = useLiveQuery(
     async (): Promise<WaterTDSTest[]> => plot ? (await db.waterTDSTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted) : [],
     [plot?.id]
@@ -749,37 +689,37 @@ function WaterTDSTestsModal(
   const fmtWhen = (n: number) =>
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   const dayLabel = (n: number) => {
-    const d = new Date(n), t = new Date();
-    const y = new Date(); y.setDate(t.getDate() - 1);
+    const d = new Date(n), today = new Date();
+    const y = new Date(); y.setDate(today.getDate() - 1);
     const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-    return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+    return same(d, today) ? t("farms_today") : same(d, y) ? t("farms_yesterday") : d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
   };
 
   return (
     <AppModal opened={opened} onClose={onClose}
-      title={plot ? `Water TDS tests · Plot ${plot.seq}${sorted.length ? ` (${sorted.length})` : ""}` : "Water TDS tests"}>
+      title={plot ? `${t("farms_waterTdsTestsLabel")} · ${t("farms_plotN", { seq: plot.seq })}${sorted.length ? ` (${sorted.length})` : ""}` : t("farms_waterTdsTestsLabel")}>
       <Stack gap="md">
         {sorted.length === 0 ? (
           <Stack align="center" gap={6} py="lg">
             <ThemeIcon size={44} radius="xl" variant="light" color="teal"><Drop size={24} weight="duotone" /></ThemeIcon>
-            <Text c="dimmed" ta="center">No water TDS tests yet for this plot</Text>
-            <Text c="dimmed" size="sm">Record a TDS (ppm) reading each time this plot's water is tested</Text>
+            <Text c="dimmed" ta="center">{t("farms_noWaterTdsTestsYet")}</Text>
+            <Text c="dimmed" size="sm">{t("farms_recordTdsHint")}</Text>
           </Stack>
         ) : (
           <Timeline active={sorted.length} bulletSize={24} lineWidth={2} color="teal">
-            {sorted.map((t) => (
-              <Timeline.Item key={t.id} bullet={<Drop size={13} weight="fill" />}
+            {sorted.map((test) => (
+              <Timeline.Item key={test.id} bullet={<Drop size={13} weight="fill" />}
                 title={<Group gap={6}>
-                  <Text fw={700} size="sm">{t.waterTDS ?? "—"} ppm</Text>
-                  {!t.synced && <Badge size="xs" variant="light" color="orange">not synced</Badge>}
+                  <Text fw={700} size="sm">{test.waterTDS ?? "—"} ppm</Text>
+                  {!test.synced && <Badge size="xs" variant="light" color="orange">{t("farms_notSynced")}</Badge>}
                 </Group>}>
-                <Text size="xs" c="dimmed">{dayLabel(t.createdAt)} · {fmtWhen(t.createdAt)}</Text>
+                <Text size="xs" c="dimmed">{dayLabel(test.createdAt)} · {fmtWhen(test.createdAt)}</Text>
               </Timeline.Item>
             ))}
           </Timeline>
         )}
         <Button variant="light" color="teal" leftSection={<Drop size={16} />} onClick={onAddTest} disabled={!plot}>
-          Add test
+          {t("farms_addTest")}
         </Button>
       </Stack>
     </AppModal>
@@ -792,6 +732,7 @@ function AddWaterTDSTestModal(
   { opened: boolean; onClose: () => void; plot: Plot | null }
 ) {
   const { syncNow } = useSession();
+  const { t } = useLanguage();
   const [waterTDS, setWaterTDS] = useState<number | "">("");
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
@@ -815,24 +756,24 @@ function AddWaterTDSTestModal(
         createdAt: now, updatedAt: now, synced: false,
       });
       await db.farmers.update(plot.farmerId, { updatedAt: now, synced: false });
-      notifications.show({ color: "green", message: "Water TDS test added" });
+      notifications.show({ color: "green", message: t("farms_waterTdsTestAdded") });
       onClose();
       syncNow().catch(() => {});
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save water TDS test" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotSaveWaterTdsTest") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={plot ? `Add water TDS test · Plot ${plot.seq}` : "Add water TDS test"}>
+    <AppModal opened={opened} onClose={onClose} title={plot ? `${t("farms_addWaterTdsTestLabel")} · ${t("farms_plotN", { seq: plot.seq })}` : t("farms_addWaterTdsTestLabel")}>
       <Stack gap="md">
-        <NumberInput label="Water TDS (ppm)" placeholder="Enter TDS reading" min={0}
+        <NumberInput label={t("farms_waterTdsLabel")} placeholder={t("farms_enterTdsReading")} min={0}
           leftSection={<Drop size={16} />} value={waterTDS} onChange={(v) => setWaterTDS(v as number | "")} data-autofocus />
-        <PhotoInput label="Test report (photo/scan, optional)" value={photo} onChange={setPhoto} height={140} />
+        <PhotoInput label={t("farms_testReportPhotoLabel")} value={photo} onChange={setPhoto} height={140} />
         <Button color="teal" leftSection={<Drop size={16} />} onClick={save} loading={saving} disabled={waterTDS === ""}>
-          Save test
+          {t("farms_saveTest")}
         </Button>
       </Stack>
     </AppModal>
@@ -844,20 +785,21 @@ function ManualSampleModal(
   { opened, onClose, onSubmit }:
   { opened: boolean; onClose: () => void; onSubmit: (code: string) => void }
 ) {
+  const { t } = useLanguage();
   const [code, setCode] = useState("");
   useEffect(() => { if (opened) setCode(""); }, [opened]);
   const submit = () => { const c = code.trim(); if (c) onSubmit(c); };
   return (
-    <AppModal opened={opened} onClose={onClose} title="Enter sample code">
+    <AppModal opened={opened} onClose={onClose} title={t("scanSample_enterCodeLabel")}>
       <Stack gap="md">
         <TextInput
-          label="Soil sample code" placeholder="Code printed under the QR"
+          label={t("farms_soilSampleCodeLabel")} placeholder={t("farms_codePrintedHint")}
           value={code} onChange={(e) => setCode(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
           autoCapitalize="characters" data-autofocus
         />
         <Button leftSection={<Flask size={16} />} color="orange" onClick={submit} disabled={!code.trim()}>
-          Add sample
+          {t("farms_addSample")}
         </Button>
       </Stack>
     </AppModal>
@@ -869,20 +811,21 @@ function SoilCropModal(
   { opened, onClose, code, onSave }:
   { opened: boolean; onClose: () => void; code: string | null; onSave: (pastCrops: string) => void }
 ) {
+  const { t, language } = useLanguage();
   const [crop, setCrop] = useState("");
   useEffect(() => { if (opened) setCrop(""); }, [opened]);
   return (
-    <AppModal opened={opened} onClose={onClose} title="Soil sample — previous crop">
+    <AppModal opened={opened} onClose={onClose} title={t("farms_soilSamplePrevCropTitle")}>
       <Stack gap="md">
         <Group gap={6}>
           <ThemeIcon variant="light" color="orange" radius="xl"><Flask size={16} weight="fill" /></ThemeIcon>
           <Text fw={700}>{code}</Text>
         </Group>
         <Autocomplete
-          label="Previous crop"
-          description="Pick from the list, or type a crop that isn't listed"
-          placeholder="Select or type previous crop"
-          data={PREVIOUS_CROPS}
+          label={t("field_previousCrop")}
+          description={t("farms_pickOrTypeCropHint")}
+          placeholder={t("farms_selectOrTypeCropPlaceholder")}
+          data={PREVIOUS_CROPS.map((c) => ({ value: c, label: cropLabel(c, language) }))}
           value={crop}
           onChange={setCrop}
           comboboxProps={{ withinPortal: true }}
@@ -890,7 +833,7 @@ function SoilCropModal(
           required
         />
         <Button color="orange" leftSection={<Flask size={16} />} onClick={() => crop.trim() && onSave(crop.trim())} disabled={!crop.trim()}>
-          Save soil sample
+          {t("farms_saveSoilSample")}
         </Button>
       </Stack>
     </AppModal>
@@ -910,11 +853,12 @@ function PlotSummaryLine({ plot: p }: { plot: any }) {
   );
   const soilTestCount = soilTests?.length ?? 0;
   const waterTestCount = waterTests?.length ?? 0;
+  const { t, language } = useLanguage();
   return (
     <Text size="xs" c="dimmed">
-      Plot {p.seq} · {p.crop || "—"}{p.sowingDate ? ` · sown ${p.sowingDate}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}
-      {waterTestCount > 0 ? ` · ${waterTestCount} water test${waterTestCount === 1 ? "" : "s"}` : ""}
-      {soilTestCount > 0 ? ` · ${soilTestCount} soil test${soilTestCount === 1 ? "" : "s"}` : ""}
+      {t("farms_plotN", { seq: p.seq })} · {p.crop ? cropLabel(p.crop, language) : "—"}{p.sowingDate ? ` · ${t("farms_sownOn", { date: p.sowingDate })}` : ""} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)}
+      {waterTestCount > 0 ? ` · ${t("farms_waterTestCount", { n: waterTestCount })}` : ""}
+      {soilTestCount > 0 ? ` · ${t("farms_soilTestCount", { n: soilTestCount })}` : ""}
     </Text>
   );
 }
@@ -932,29 +876,21 @@ function FarmDetailModal(
   { opened, onClose, farm, plots, samples, photoUrl, onEdit }:
   { opened: boolean; onClose: () => void; farm: Farm; plots: any[]; samples: SoilSample[]; photoUrl: string | null; onEdit: () => void }
 ) {
+  const { t, language } = useLanguage();
   const fmtWhen = (n: number) =>
     new Date(n).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   return (
-    <AppModal opened={opened} onClose={onClose} title={`Farm · ${farm.id}`}>
+    <AppModal opened={opened} onClose={onClose} title={`${t("farms_farmLabel")} · ${farm.id}`}>
       <Stack gap="md">
-        {(() => {
-          const ids = farm.photoIds && farm.photoIds.length ? farm.photoIds : (farm.photoId ? [farm.photoId] : []);
-          if (!ids.length) return null;
-          if (ids.length === 1) return photoUrl ? <Image src={photoUrl} h={180} radius="md" fit="cover" alt="farm" /> : <GalleryPhoto mediaId={ids[0]} />;
-          return (
-            <Group gap="sm" wrap="nowrap" style={{ overflowX: "auto" }}>
-              {ids.map((mid) => <GalleryPhoto key={mid} mediaId={mid} />)}
-            </Group>
-          );
-        })()}
+        {photoUrl && <Image src={photoUrl} h={180} radius="md" fit="cover" alt="farm" />}
 
         <Paper withBorder radius="md" p="sm">
           <Group gap={8}>
             <ThemeIcon variant="light" color="green" radius="xl"><MapPinLine size={18} /></ThemeIcon>
             <div>
-              <Text size="sm" fw={500}>Location</Text>
+              <Text size="sm" fw={500}>{t("farms_location")}</Text>
               <Text size="xs" c="dimmed">
-                {farm.lat != null ? `${fmtCoord(farm.lat)}, ${fmtCoord(farm.lng)}${farm.accuracy != null ? ` (±${Math.round(farm.accuracy)}m)` : ""}` : "Not captured"}
+                {farm.lat != null ? `${fmtCoord(farm.lat)}, ${fmtCoord(farm.lng)}${farm.accuracy != null ? ` (±${Math.round(farm.accuracy)}m)` : ""}` : t("farms_notCaptured")}
               </Text>
             </div>
           </Group>
@@ -963,10 +899,10 @@ function FarmDetailModal(
         {((farm.boundary && farm.boundary.length > 0) || (farm.lat != null && farm.lng != null)) && (
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={6}>
-              <Group gap={6} component="span"><Polygon size={16} /> Boundary · {farm.boundary?.length ?? 0} points</Group>
+              <Group gap={6} component="span"><Polygon size={16} /> {t("farms_boundaryLabel")} · {t("farms_boundaryPointsCount", { n: farm.boundary?.length ?? 0 })}</Group>
             </Text>
             <MapErrorBoundary fallback={
-              <Text size="xs" c="dimmed">Map preview unavailable.</Text>
+              <Text size="xs" c="dimmed">{t("farms_mapPreviewUnavailable")}</Text>
             }>
               <FarmBoundaryPreview boundary={farm.boundary} markerLat={farm.lat} markerLng={farm.lng} height={180} />
             </MapErrorBoundary>
@@ -984,10 +920,10 @@ function FarmDetailModal(
 
         <Paper withBorder radius="md" p="sm">
           <Text size="sm" fw={500} mb={6}>
-            <Group gap={6} component="span"><Plant size={16} /> Plots · {plots.length}</Group>
+            <Group gap={6} component="span"><Plant size={16} /> {t("farms_plotsLabel")} · {plots.length}</Group>
           </Text>
           {plots.length === 0 ? (
-            <Text size="xs" c="dimmed">No plots yet</Text>
+            <Text size="xs" c="dimmed">{t("farms_noPlotsYet")}</Text>
           ) : (
             <Stack gap={4}>
               {plots.map((p) => (
@@ -999,16 +935,16 @@ function FarmDetailModal(
 
         {(farm.treeCountBig != null || farm.treeCountSmall != null || farm.mobileCoverage || farm.shapeOverride || farm.plotSizeHectOverride != null || farm.plotSizeSqFtOverride != null) && (
           <Paper withBorder radius="md" p="sm">
-            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><MapPinLine size={16} /> Physical fieldwork</Group></Text>
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><MapPinLine size={16} /> {t("farms_physicalFieldwork")}</Group></Text>
             <Stack gap={2}>
               {(farm.treeCountBig != null || farm.treeCountSmall != null) && (
-                <Text size="xs" c="dimmed">Trees: {farm.treeCountBig ?? 0} big · {farm.treeCountSmall ?? 0} small</Text>
+                <Text size="xs" c="dimmed">{t("farms_treesLine", { big: farm.treeCountBig ?? 0, small: farm.treeCountSmall ?? 0 })}</Text>
               )}
-              {farm.mobileCoverage && <Text size="xs" c="dimmed">Mobile coverage: {labelOf(MOBILE_COVERAGE_OPTS, farm.mobileCoverage)}</Text>}
-              {farm.shapeOverride && <Text size="xs" c="dimmed">Shape: {SHAPE_LABEL[farm.shapeOverride]}</Text>}
+              {farm.mobileCoverage && <Text size="xs" c="dimmed">{t("field_mobileCoverage")}: {labelOf(mobileCoverageOpts(t), farm.mobileCoverage)}</Text>}
+              {farm.shapeOverride && <Text size="xs" c="dimmed">{t("farms_shapeLabel")}: {labelOf(shapeOpts(t), farm.shapeOverride)}</Text>}
               {(farm.plotSizeSqFtOverride != null || farm.plotSizeHectOverride != null) && (
                 <Text size="xs" c="dimmed">
-                  Plot size: {(farm.plotSizeSqFtOverride ?? legacyHectToSqFt(farm.plotSizeHectOverride!)).toLocaleString()} sq ft
+                  {t("farms_plotSizeLabel")}: {(farm.plotSizeSqFtOverride ?? legacyHectToSqFt(farm.plotSizeHectOverride!)).toLocaleString()} sq ft
                 </Text>
               )}
             </Stack>
@@ -1018,41 +954,41 @@ function FarmDetailModal(
         {(farm.farmerFocus || asWaterSourceArray(farm.waterSource).length || asIrrigationArray(farm.irrigationAvailable).length || (farm.seasonsPossible?.length) || (farm.knownIssues?.length) ||
           farm.previousCrop || farm.previousCropProduction || (farm.animalPressure?.length) || farm.accessibility || (farm.toolsAvailable?.length)) && (
           <Paper withBorder radius="md" p="sm">
-            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Users size={16} /> From farmer</Group></Text>
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Users size={16} /> {t("farms_fromFarmer")}</Group></Text>
             <Stack gap={2}>
-              {farm.farmerFocus && <Text size="xs" c="dimmed">{FARMER_FOCUS_DESCRIPTIONS[farm.farmerFocus]}</Text>}
-              {!!asWaterSourceArray(farm.waterSource).length && <Text size="xs" c="dimmed">Water source: {asWaterSourceArray(farm.waterSource).map((s) => labelOf(WATER_SOURCE_OPTS, s)).join(", ")}</Text>}
-              {!!asIrrigationArray(farm.irrigationAvailable).length && <Text size="xs" c="dimmed">Irrigation: {asIrrigationArray(farm.irrigationAvailable).map((s) => labelOf(IRRIGATION_OPTS, s)).join(", ")}</Text>}
+              {farm.farmerFocus && <Text size="xs" c="dimmed">{t(FARMER_FOCUS_DESC_KEY[farm.farmerFocus])}</Text>}
+              {!!asWaterSourceArray(farm.waterSource).length && <Text size="xs" c="dimmed">{t("field_waterSource")}: {asWaterSourceArray(farm.waterSource).map((s) => labelOf(waterSourceOpts(t), s)).join(", ")}</Text>}
+              {!!asIrrigationArray(farm.irrigationAvailable).length && <Text size="xs" c="dimmed">{t("field_irrigationAvailable")}: {asIrrigationArray(farm.irrigationAvailable).map((s) => labelOf(irrigationOpts(t), s)).join(", ")}</Text>}
               {!!farm.seasonsPossible?.length && (
                 <Text size="xs" c="dimmed">
-                  Seasons: {farm.seasonsPossible.map((s) => labelOf(SEASON_OPTS, s)).join(", ")}
+                  {t("field_seasonsPossible")}: {farm.seasonsPossible.map((s) => labelOf(seasonOpts(t), s)).join(", ")}
                   {farm.seasonsPossible.includes("other") && farm.seasonsPossibleOther ? ` (${farm.seasonsPossibleOther})` : ""}
                 </Text>
               )}
               {!!farm.knownIssues?.length && (
                 <Text size="xs" c="dimmed">
-                  Known issues: {farm.knownIssues.map((s) => labelOf(KNOWN_ISSUE_OPTS, s)).join(", ")}
+                  {t("field_knownIssues")}: {farm.knownIssues.map((s) => labelOf(knownIssueOpts(t), s)).join(", ")}
                   {farm.knownIssues.includes("other") && farm.knownIssuesOther ? ` (${farm.knownIssuesOther})` : ""}
                 </Text>
               )}
               {!!farm.animalPressure?.length && (
                 <Text size="xs" c="dimmed">
-                  Animal pressure: {farm.animalPressure.map((s) => labelOf(ANIMAL_PRESSURE_OPTS, s)).join(", ")}
+                  {t("field_animalPressure")}: {farm.animalPressure.map((s) => labelOf(animalPressureOpts(t), s)).join(", ")}
                   {farm.animalPressure.includes("other") && farm.animalPressureOther ? ` (${farm.animalPressureOther})` : ""}
                 </Text>
               )}
-              {farm.accessibility && <Text size="xs" c="dimmed">{ACCESSIBILITY_DESCRIPTIONS[farm.accessibility]}</Text>}
+              {farm.accessibility && <Text size="xs" c="dimmed">{t(ACCESSIBILITY_DESC_KEY[farm.accessibility])}</Text>}
               {!!farm.toolsAvailable?.length && (
                 <Text size="xs" c="dimmed">
-                  Tools available: {farm.toolsAvailable.map((s) => labelOf(TOOL_OPTS, s)).join(", ")}
+                  {t("field_toolsAvailable")}: {farm.toolsAvailable.map((s) => labelOf(toolOpts(t), s)).join(", ")}
                   {farm.toolsAvailable.includes("other") && farm.toolsAvailableOther ? ` (${farm.toolsAvailableOther})` : ""}
                 </Text>
               )}
-              {farm.previousCrop && <Text size="xs" c="dimmed">Previous crop: {farm.previousCrop}</Text>}
+              {farm.previousCrop && <Text size="xs" c="dimmed">{t("field_previousCrop")}: {cropLabel(farm.previousCrop, language)}</Text>}
               {farm.previousCropProduction && (
                 <Text size="xs" c="dimmed">
-                  Previous yield: {farm.previousCropProduction.quintals ?? "—"} quintals
-                  {farm.previousCropProduction.vsBenchmark ? ` (${labelOf(BENCHMARK_OPTS, farm.previousCropProduction.vsBenchmark)})` : ""}
+                  {t("farms_previousYieldLabel")}: {farm.previousCropProduction.quintals ?? "—"} {t("unit_quintals")}
+                  {farm.previousCropProduction.vsBenchmark ? ` (${labelOf(benchmarkOpts(t), farm.previousCropProduction.vsBenchmark)})` : ""}
                 </Text>
               )}
             </Stack>
@@ -1061,12 +997,12 @@ function FarmDetailModal(
 
         {(farm.gradient || farm.waterloggingProbability || farm.sunlightAvailability || farm.fencingAvailability) && (
           <Paper withBorder radius="md" p="sm">
-            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><TrendUp size={16} /> Supervisor observation</Group></Text>
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><TrendUp size={16} /> {t("farms_supervisorObservation")}</Group></Text>
             <Stack gap={2}>
-              {farm.gradient && <Text size="xs" c="dimmed">Gradient: {labelOf(GRADIENT_OPTS, farm.gradient)} — {GRADIENT_DESCRIPTIONS[farm.gradient]}</Text>}
-              {farm.waterloggingProbability && <Text size="xs" c="dimmed">Waterlogging probability: {labelOf(WATERLOGGING_OPTS, farm.waterloggingProbability)}</Text>}
-              {farm.sunlightAvailability && <Text size="xs" c="dimmed">Sunlight: {labelOf(SUNLIGHT_OPTS, farm.sunlightAvailability)} — {SUNLIGHT_DESCRIPTIONS[farm.sunlightAvailability]}</Text>}
-              {farm.fencingAvailability && <Text size="xs" c="dimmed">Fencing: {labelOf(FENCING_OPTS, farm.fencingAvailability)}</Text>}
+              {farm.gradient && <Text size="xs" c="dimmed">{t("field_gradient")}: {labelOf(gradientOpts(t), farm.gradient)} — {t(GRADIENT_DESC_KEY[farm.gradient])}</Text>}
+              {farm.waterloggingProbability && <Text size="xs" c="dimmed">{t("field_waterloggingProbability")}: {labelOf(waterloggingOpts(t), farm.waterloggingProbability)}</Text>}
+              {farm.sunlightAvailability && <Text size="xs" c="dimmed">{t("farms_sunlightLabel")}: {labelOf(sunlightOpts(t), farm.sunlightAvailability)} — {t(SUNLIGHT_DESC_KEY[farm.sunlightAvailability])}</Text>}
+              {farm.fencingAvailability && <Text size="xs" c="dimmed">{t("farms_fencingLabel")}: {labelOf(fencingOpts(t), farm.fencingAvailability)}</Text>}
             </Stack>
           </Paper>
         )}
@@ -1074,15 +1010,15 @@ function FarmDetailModal(
 
         <Paper withBorder radius="md" p="sm">
           <Text size="sm" fw={500} mb={6}>
-            <Group gap={6} component="span"><Flask size={16} /> Soil samples · {samples.length}</Group>
+            <Group gap={6} component="span"><Flask size={16} /> {t("farms_soilSamplesLabel")} · {samples.length}</Group>
           </Text>
           {samples.length === 0 ? (
-            <Text size="xs" c="dimmed">No samples yet</Text>
+            <Text size="xs" c="dimmed">{t("farms_noSamplesYet")}</Text>
           ) : (
             <Stack gap={4}>
               {[...samples].sort((a, b) => b.createdAt - a.createdAt).map((s) => (
                 <Text key={s.id} size="xs" c="dimmed">
-                  {s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · previous: ${s.pastCrops}` : ""}
+                  {s.code} · {fmtWhen(s.createdAt)}{s.pastCrops ? ` · ${t("farms_previousPrefix")}: ${s.pastCrops}` : ""}
                 </Text>
               ))}
             </Stack>
@@ -1092,14 +1028,14 @@ function FarmDetailModal(
         {farm.note && farm.note.trim() && (
           <Paper withBorder radius="md" p="sm">
             <Text size="sm" fw={500} mb={4}>
-              <Group gap={6} component="span"><PencilSimple size={16} /> Note</Group>
+              <Group gap={6} component="span"><PencilSimple size={16} /> {t("bio_note")}</Group>
             </Text>
             <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>{farm.note}</Text>
           </Paper>
         )}
 
         <Button variant="light" leftSection={<PencilSimple size={16} />} onClick={onEdit}>
-          Edit farm
+          {t("farms_editFarm")}
         </Button>
       </Stack>
     </AppModal>
@@ -1110,6 +1046,7 @@ function FarmDetailModal(
 // Waits for an accurate GPS lock (watchPosition), showing the fix tightening
 // live, instead of grabbing the first coarse (±100m) reading.
 function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCapture: (l: SessionLocation) => void }) {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<number | null>(null);   // live accuracy while locking
 
@@ -1128,9 +1065,9 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
       const last = getLastLocation();
       if (last) {
         onCapture(last);
-        notifications.show({ color: "yellow", message: `GPS unavailable — used last known location (±${Math.round(last.accuracy)}m)` });
+        notifications.show({ color: "yellow", message: t("farms_gpsUnavailableFallback", { accuracy: Math.round(last.accuracy) }) });
       } else {
-        notifications.show({ color: "red", message: e?.message || "Could not get location" });
+        notifications.show({ color: "red", message: e?.message || t("farms_couldNotGetLocation") });
       }
     } finally {
       setBusy(false);
@@ -1146,16 +1083,16 @@ function LocationCapture({ loc, onCapture }: { loc: SessionLocation | null; onCa
             {loc && !busy ? <CheckCircle size={18} weight="fill" /> : <Crosshair size={18} />}
           </ThemeIcon>
           <div>
-            <Text size="sm" fw={500}>{busy ? "Locating…" : loc ? "Location captured" : "Geolocation"}</Text>
+            <Text size="sm" fw={500}>{busy ? t("farms_locating") : loc ? t("farms_locationCaptured") : t("farms_geolocationLabel")}</Text>
             <Text size="xs" c="dimmed">
               {busy
-                ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
-                : loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : "Not captured yet"}
+                ? (live != null ? t("farms_holdStill", { live }) : t("farms_gettingGpsLock"))
+                : loc ? `${fmtCoord(loc.lat)}, ${fmtCoord(loc.lng)} (±${Math.round(loc.accuracy)}m)` : t("farms_notCapturedYet")}
             </Text>
           </div>
         </Group>
         <Button size="xs" variant={loc ? "light" : "filled"} loading={busy} onClick={capture}>
-          {loc ? "Recapture" : "Capture"}
+          {loc ? t("farms_recapture") : t("farms_capture")}
         </Button>
       </Group>
     </Paper>
@@ -1172,6 +1109,7 @@ function BoundaryCapture({
   onChange: (p: BoundaryPoint[]) => void;
   centerHint?: { lat: number; lng: number } | null;
 }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<BoundaryMode>("manual");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<number | null>(null);
@@ -1189,7 +1127,7 @@ function BoundaryCapture({
       });
       onChange([...points, { lat: l.lat, lng: l.lng, accuracy: l.accuracy, at: l.at, alt: l.alt ?? null, altAccuracy: l.altAccuracy ?? null }]);
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not get location" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotGetLocation") });
     } finally {
       setBusy(false);
       setLive(null);
@@ -1199,7 +1137,7 @@ function BoundaryCapture({
   const cacheCenter = centerHint ?? (points[0] ? { lat: points[0].lat, lng: points[0].lng } : null);
   const cacheNearbyTiles = async () => {
     if (!cacheCenter) {
-      notifications.show({ color: "yellow", message: "Capture farm location first to cache nearby map tiles" });
+      notifications.show({ color: "yellow", message: t("farms_captureFarmFirstHint") });
       return;
     }
     setCachingTiles(true);
@@ -1211,9 +1149,9 @@ function BoundaryCapture({
         maxZoom: 18,
         onProgress: (done, total) => setTileProgress({ done, total }),
       });
-      notifications.show({ color: "green", message: `Cached ${result.total} map tiles nearby` });
+      notifications.show({ color: "green", message: t("farms_tilesCachedToast", { n: result.total }) });
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not cache map tiles" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotCacheTiles") });
     } finally {
       setCachingTiles(false);
     }
@@ -1227,17 +1165,17 @@ function BoundaryCapture({
             <Polygon size={18} weight={points.length ? "fill" : "regular"} />
           </ThemeIcon>
           <div>
-            <Text size="sm" fw={500}>Farm boundary <Text span size="xs" c="dimmed">(optional)</Text></Text>
+            <Text size="sm" fw={500}>{t("farms_farmBoundaryLabel")} <Text span size="xs" c="dimmed">({t("common_optional")})</Text></Text>
             <Text size="xs" c="dimmed">
               {busy
-                ? (live != null ? `±${live}m — hold still…` : "Getting a GPS lock…")
-                : points.length ? `${points.length} point${points.length === 1 ? "" : "s"} captured` : "Stand at each corner and add a point"}
+                ? (live != null ? t("farms_holdStill", { live }) : t("farms_gettingGpsLock"))
+                : points.length ? t("farms_pointsCaptured", { n: points.length }) : t("farms_standAtCorner")}
             </Text>
           </div>
         </Group>
         {mode === "manual" && (
           <Button size="xs" variant="filled" leftSection={<Plus size={14} />} loading={busy} onClick={addPoint}>
-            Add point
+            {t("farms_addPoint")}
           </Button>
         )}
       </Group>
@@ -1249,8 +1187,8 @@ function BoundaryCapture({
         value={mode}
         onChange={(value) => setMode(value as BoundaryMode)}
         data={[
-          { label: "Walk points", value: "manual" },
-          { label: "Draw map", value: "map" },
+          { label: t("farms_walkPoints"), value: "manual" },
+          { label: t("farms_drawMap"), value: "map" },
         ]}
       />
 
@@ -1261,10 +1199,10 @@ function BoundaryCapture({
           </MapErrorBoundary>
           <Group justify="space-between" gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed">
-              {tileProgress?.total ? `${tileProgress.done}/${tileProgress.total} tiles cached` : "Cache nearby tiles before working with weak signal"}
+              {tileProgress?.total ? t("farms_tilesCached", { done: tileProgress.done, total: tileProgress.total }) : t("farms_cacheTilesHint")}
             </Text>
             <Button size="xs" variant="light" color="gray" loading={cachingTiles} onClick={cacheNearbyTiles}>
-              Cache map
+              {t("farms_cacheMap")}
             </Button>
           </Group>
         </Stack>
@@ -1283,7 +1221,7 @@ function BoundaryCapture({
                         #{i + 1} · {fmtCoord(p.lat)}, {fmtCoord(p.lng)} (±{Math.round(p.accuracy)}m)
                       </Text>
                     </Group>
-                    <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label="Remove point">
+                    <ActionIcon variant="subtle" color="red" size="sm" onClick={() => removePoint(i)} aria-label={t("farms_removePointAria")}>
                       <Trash size={14} />
                     </ActionIcon>
                   </Group>
@@ -1304,6 +1242,7 @@ function AddFarmModal(
   { opened: boolean; onClose: () => void; farmer?: Farmer; editFarm?: Farm }
 ) {
   const { syncNow } = useSession();
+  const { t, language } = useLanguage();
   const villageCode = editFarm?.villageCode ?? farmer?.villageCode ?? "";
   const farmerId = editFarm?.farmerId ?? farmer?.id ?? "";
 
@@ -1538,7 +1477,7 @@ function AddFarmModal(
           updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
-        notifications.show({ color: "green", message: `Farm ${editFarm.id} updated` });
+        notifications.show({ color: "green", message: t("farms_farmUpdatedToast", { id: editFarm.id }) });
       } else {
         const id = await nextFarmId(villageCode);
         await db.farms.add({
@@ -1549,19 +1488,19 @@ function AddFarmModal(
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
-        notifications.show({ color: "green", message: `Farm ${id} added` });
+        notifications.show({ color: "green", message: t("farms_farmAddedToast", { id }) });
       }
       onClose();
       syncNow().catch(() => {});
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save farm" });
+      notifications.show({ color: "red", message: e?.message || t("farms_couldNotSaveFarm") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={editFarm ? `Edit farm · ${editFarm.id}` : "Add farm"}>
+    <AppModal opened={opened} onClose={onClose} title={editFarm ? `${t("farms_editFarm")} · ${editFarm.id}` : t("farms_addFarm")}>
       <Stack gap="xl">
         {/* Save stays pinned at the top so the map (Draw mode) never buries it. */}
         <Box
@@ -1572,24 +1511,24 @@ function AddFarmModal(
           }}
         >
           <Button fullWidth size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
-            {editFarm ? "Update farm" : "Save farm"}
+            {editFarm ? t("farms_updateFarm") : t("farms_saveFarm")}
           </Button>
         </Box>
-        <MultiPhotoInput items={photoItems} onChange={setPhotoItems} label="Farm photos" />
+        <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
 
         <Stack gap="sm">
-          <SectionDivider icon={<MapPinLine size={14} />} label="Physical fieldwork" />
+          <SectionDivider icon={<MapPinLine size={14} />} label={t("farms_physicalFieldwork")} />
           <LocationCapture loc={loc} onCapture={setLoc} />
           <BoundaryCapture points={boundary} onChange={setBoundary} centerHint={loc} />
           <SimpleGridTwo>
-            <NumberInput label="Big trees" min={0} leftSection={<Tree size={16} />}
+            <NumberInput label={t("farms_bigTrees")} min={0} leftSection={<Tree size={16} />}
               value={treeCountBig} onChange={(v) => setTreeCountBig(v as number | "")} />
-            <NumberInput label="Small trees" min={0} leftSection={<Tree size={16} />}
+            <NumberInput label={t("farms_smallTrees")} min={0} leftSection={<Tree size={16} />}
               value={treeCountSmall} onChange={(v) => setTreeCountSmall(v as number | "")} />
           </SimpleGridTwo>
           <div>
-            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><DeviceMobile size={16} /> Mobile network coverage</Group></Text>
-            <SegmentedControl fullWidth value={mobileCoverage} onChange={(v) => setMobileCoverage(v as MobileCoverage)} data={MOBILE_COVERAGE_OPTS} />
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><DeviceMobile size={16} /> {t("farms_mobileNetworkCoverage")}</Group></Text>
+            <SegmentedControl fullWidth value={mobileCoverage} onChange={(v) => setMobileCoverage(v as MobileCoverage)} data={mobileCoverageOpts(t)} />
           </div>
 
           {/* Auto-computed from the boundary walk — grouped in its own card so it
@@ -1598,26 +1537,26 @@ function AddFarmModal(
             <Stack gap="sm">
               <div>
                 <Select
-                  label="Shape" clearable
-                  placeholder="Select, or walk 3+ boundary points to auto-detect"
-                  data={SHAPE_OPTS}
+                  label={t("farms_shapeLabel")} clearable
+                  placeholder={t("farms_selectOrWalkBoundaryPlaceholder")}
+                  data={shapeOpts(t)}
                   value={shapeOverride || null}
                   onChange={(v) => { shapeTouched.current = true; setShapeOverride((v as FarmShape) || ""); }}
                   comboboxProps={{ withinPortal: true }}
                 />
                 {boundary.length >= 3 && !shapeTouched.current && derivedShape && (
-                  <Text size="xs" c="dimmed" mt={4}>Auto-detected from boundary — tap to override</Text>
+                  <Text size="xs" c="dimmed" mt={4}>{t("farms_autoDetectedBoundaryHint")}</Text>
                 )}
               </div>
               <div>
                 <NumberInput
-                  label="Plot size (sq ft)" min={0}
-                  placeholder="Enter size, or walk 3+ boundary points to auto-fill"
+                  label={t("farms_plotSizeSqFtLabel")} min={0}
+                  placeholder={t("farms_enterSizeOrWalkPlaceholder")}
                   value={plotSizeOverride}
                   onChange={(v) => { plotSizeTouched.current = true; setPlotSizeOverride(v as number | ""); }}
                 />
                 {derivedAcres != null && !plotSizeTouched.current && (
-                  <Text size="xs" c="dimmed" mt={4}>≈ {derivedAcres} acre — auto-filled from boundary, tap to override</Text>
+                  <Text size="xs" c="dimmed" mt={4}>{t("farms_autoFilledAcresHint", { acres: derivedAcres })}</Text>
                 )}
               </div>
             </Stack>
@@ -1625,127 +1564,127 @@ function AddFarmModal(
         </Stack>
 
         <Stack gap="sm">
-          <SectionDivider icon={<Users size={14} />} label="From farmer" />
+          <SectionDivider icon={<Users size={14} />} label={t("farms_fromFarmer")} />
           <div>
-            <Text size="sm" fw={500} mb={6}>Farmer visit frequency</Text>
-            <SegmentedControl fullWidth value={farmerFocus} onChange={(v) => setFarmerFocus(v as FarmerFocus)} data={FARMER_FOCUS_OPTS} />
+            <Text size="sm" fw={500} mb={6}>{t("farms_farmerVisitFrequency")}</Text>
+            <SegmentedControl fullWidth value={farmerFocus} onChange={(v) => setFarmerFocus(v as FarmerFocus)} data={farmerFocusOpts(t)} />
             <Text size="xs" c="dimmed" mt={4}>
-              {farmerFocus ? FARMER_FOCUS_DESCRIPTIONS[farmerFocus] : "How often does the farmer visit this farm?"}
+              {farmerFocus ? t(FARMER_FOCUS_DESC_KEY[farmerFocus]) : t("farms_farmerFocusHint")}
             </Text>
           </div>
           <div>
             <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
-              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Water source</Group></Text>
-              <SelectAllToggle options={WATER_SOURCE_OPTS.map((o) => o.value as WaterSource)} value={waterSource} onChange={setWaterSource} />
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> {t("field_waterSource")}</Group></Text>
+              <SelectAllToggle options={[...WATER_SOURCE_VALUES]} value={waterSource} onChange={setWaterSource} />
             </Group>
-            <AutoCloseMultiSelect placeholder="Select all that apply"
-              data={WATER_SOURCE_OPTS} value={waterSource} onChange={(v) => setWaterSource(v as WaterSource[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect placeholder={t("farms_selectAllThatApply")}
+              data={waterSourceOpts(t)} value={waterSource} onChange={(v) => setWaterSource(v as WaterSource[])} comboboxProps={{ withinPortal: true }} />
           </div>
           <div>
             <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
-              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> Irrigation available</Group></Text>
-              <SelectAllToggle options={IRRIGATION_OPTS.map((o) => o.value as IrrigationAvailable)} value={irrigationAvailable} onChange={setIrrigationAvailable} />
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Drop size={16} /> {t("field_irrigationAvailable")}</Group></Text>
+              <SelectAllToggle options={[...IRRIGATION_VALUES]} value={irrigationAvailable} onChange={setIrrigationAvailable} />
             </Group>
-            <AutoCloseMultiSelect placeholder="Select all that apply"
-              data={IRRIGATION_OPTS} value={irrigationAvailable} onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect placeholder={t("farms_selectAllThatApply")}
+              data={irrigationOpts(t)} value={irrigationAvailable} onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} comboboxProps={{ withinPortal: true }} />
           </div>
           <div>
-            <AutoCloseMultiSelect label="Seasons possible" placeholder="Select all that apply" leftSection={<CalendarBlank size={16} />}
-              data={SEASON_OPTS} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect label={t("field_seasonsPossible")} placeholder={t("farms_selectAllThatApply")} leftSection={<CalendarBlank size={16} />}
+              data={seasonOpts(t)} value={seasonsPossible} onChange={(v) => setSeasonsPossible(v as Season[])} comboboxProps={{ withinPortal: true }} />
             {seasonsPossible.includes("other") && (
-              <Textarea mt={6} placeholder="Please specify the season" value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} autosize minRows={2} />
+              <Textarea mt={6} placeholder={t("farms_specifySeasonPlaceholder")} value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
-            <AutoCloseMultiSelect label="Known issues" placeholder="Select all that apply" leftSection={<Warning size={16} />}
-              data={KNOWN_ISSUE_OPTS} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect label={t("field_knownIssues")} placeholder={t("farms_selectAllThatApply")} leftSection={<Warning size={16} />}
+              data={knownIssueOpts(t)} value={knownIssues} onChange={(v) => setKnownIssues(v as KnownIssue[])} comboboxProps={{ withinPortal: true }} />
             {knownIssues.includes("other") && (
-              <Textarea mt={6} placeholder="Please specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} autosize minRows={2} />
+              <Textarea mt={6} placeholder={t("farms_pleaseSpecifyPlaceholder")} value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
             <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
-              <Text size="sm" fw={500}><Group gap={6} component="span"><PawPrint size={16} /> Animal pressure</Group></Text>
-              <SelectAllToggle options={ANIMAL_PRESSURE_OPTS.map((o) => o.value as AnimalPressure)} value={animalPressure} onChange={setAnimalPressure} />
+              <Text size="sm" fw={500}><Group gap={6} component="span"><PawPrint size={16} /> {t("field_animalPressure")}</Group></Text>
+              <SelectAllToggle options={[...ANIMAL_PRESSURE_VALUES]} value={animalPressure} onChange={setAnimalPressure} />
             </Group>
-            <AutoCloseMultiSelect placeholder="Select all that apply"
-              data={ANIMAL_PRESSURE_OPTS} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect placeholder={t("farms_selectAllThatApply")}
+              data={animalPressureOpts(t)} value={animalPressure} onChange={(v) => setAnimalPressure(v as AnimalPressure[])} comboboxProps={{ withinPortal: true }} />
             {animalPressure.includes("other") && (
-              <Textarea mt={6} placeholder="Please specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} autosize minRows={2} />
+              <Textarea mt={6} placeholder={t("farms_pleaseSpecifyPlaceholder")} value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <div>
-            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Tractor size={16} /> Accessibility</Group></Text>
-            <SegmentedControl fullWidth value={accessibility} onChange={(v) => setAccessibility(v as Accessibility)} data={ACCESSIBILITY_OPTS} />
+            <Text size="sm" fw={500} mb={6}><Group gap={6} component="span"><Tractor size={16} /> {t("field_accessibility")}</Group></Text>
+            <SegmentedControl fullWidth value={accessibility} onChange={(v) => setAccessibility(v as Accessibility)} data={accessibilityOpts(t)} />
             <Text size="xs" c="dimmed" mt={4}>
-              {accessibility ? ACCESSIBILITY_DESCRIPTIONS[accessibility] : "What can physically get onto this plot?"}
+              {accessibility ? t(ACCESSIBILITY_DESC_KEY[accessibility]) : t("farms_accessibilityHint")}
             </Text>
           </div>
           <div>
             <Group justify="space-between" mb={6} wrap="nowrap" align="baseline">
-              <Text size="sm" fw={500}><Group gap={6} component="span"><Wrench size={16} /> Tools available to farmer</Group></Text>
-              <SelectAllToggle options={TOOL_OPTS.map((o) => o.value as FarmTool)} value={toolsAvailable} onChange={setToolsAvailable} />
+              <Text size="sm" fw={500}><Group gap={6} component="span"><Wrench size={16} /> {t("farms_toolsAvailableToFarmer")}</Group></Text>
+              <SelectAllToggle options={[...TOOL_VALUES]} value={toolsAvailable} onChange={setToolsAvailable} />
             </Group>
-            <AutoCloseMultiSelect placeholder="Select all that apply"
-              data={TOOL_OPTS} value={toolsAvailable} onChange={(v) => setToolsAvailable(v as FarmTool[])} comboboxProps={{ withinPortal: true }} />
+            <AutoCloseMultiSelect placeholder={t("farms_selectAllThatApply")}
+              data={toolOpts(t)} value={toolsAvailable} onChange={(v) => setToolsAvailable(v as FarmTool[])} comboboxProps={{ withinPortal: true }} />
             {toolsAvailable.includes("other") && (
-              <Textarea mt={6} placeholder="Please specify" value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} autosize minRows={2} />
+              <Textarea mt={6} placeholder={t("farms_pleaseSpecifyPlaceholder")} value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} autosize minRows={2} />
             )}
           </div>
           <Autocomplete
-            label="Previous crop" placeholder="Select or type previous crop" leftSection={<Plant size={16} />}
-            data={PREVIOUS_CROPS} value={previousCrop} onChange={setPreviousCrop} comboboxProps={{ withinPortal: true }}
+            label={t("field_previousCrop")} placeholder={t("farms_selectOrTypeCropPlaceholder")} leftSection={<Plant size={16} />}
+            data={PREVIOUS_CROPS.map((c) => ({ value: c, label: cropLabel(c, language) }))} value={previousCrop} onChange={setPreviousCrop} comboboxProps={{ withinPortal: true }}
           />
           <SimpleGridTwo>
-            <NumberInput label="Yield (quintals)" min={0} value={prevCropQuintals} onChange={(v) => setPrevCropQuintals(v as number | "")} />
-            <Select label="vs. benchmark" placeholder="Select" clearable data={BENCHMARK_OPTS}
+            <NumberInput label={t("farms_yieldQuintalsLabel")} min={0} value={prevCropQuintals} onChange={(v) => setPrevCropQuintals(v as number | "")} />
+            <Select label={t("farms_vsBenchmarkLabel")} placeholder={t("bio_selectPlaceholder")} clearable data={benchmarkOpts(t)}
               value={prevCropBenchmark || null} onChange={(v) => setPrevCropBenchmark((v as BenchmarkComparison) || "")} comboboxProps={{ withinPortal: true }} />
           </SimpleGridTwo>
         </Stack>
 
         <Stack gap="sm">
-          <SectionDivider icon={<PencilSimple size={14} />} label="Supervisor observation" />
+          <SectionDivider icon={<PencilSimple size={14} />} label={t("farms_supervisorObservation")} />
           <SimpleGridTwo>
             <div>
               <Select
-                label="Gradient (slope)" leftSection={<TrendUp size={16} />}
+                label={t("farms_gradientSlopeLabel")} leftSection={<TrendUp size={16} />}
                 clearable
-                placeholder="Select, or walk 3+ boundary points to auto-detect"
-                data={GRADIENT_OPTS} value={gradient || null}
+                placeholder={t("farms_selectOrWalkBoundaryPlaceholder")}
+                data={gradientOpts(t)} value={gradient || null}
                 onChange={(v) => { gradientTouched.current = true; setGradient((v as Gradient) || ""); }}
                 comboboxProps={{ withinPortal: true }} />
               <Text size="xs" c="dimmed" mt={4}>
-                {gradient ? GRADIENT_DESCRIPTIONS[gradient] : "How steep is this plot?"}
+                {gradient ? t(GRADIENT_DESC_KEY[gradient]) : t("farms_gradientHint")}
               </Text>
               {!gradientTouched.current && elevationLoading && boundary.length >= 3 && !gradientEstimate && (
-                <Text size="xs" c="dimmed" mt={2}>Fetching elevation data…</Text>
+                <Text size="xs" c="dimmed" mt={2}>{t("farms_fetchingElevation")}</Text>
               )}
               {boundary.length >= 3 && !gradientTouched.current && gradientEstimate && (
                 <Text size="xs" c="dimmed" mt={2}>
-                  Auto-filled ~{gradientEstimate.percent}% from {usingApiElevation ? "Google elevation data" : "boundary GPS altitude"} — tap to override
+                  {t("farms_autoFilledGradient", { percent: gradientEstimate.percent, source: usingApiElevation ? t("farms_sourceGoogleElevation") : t("farms_sourceGpsAltitude") })}
                 </Text>
               )}
             </div>
-            <Select label="Waterlogging risk" placeholder="Select" leftSection={<Drop size={16} />} clearable
-              data={WATERLOGGING_OPTS} value={waterloggingProbability || null} onChange={(v) => setWaterloggingProbability((v as WaterloggingProbability) || "")} comboboxProps={{ withinPortal: true }} />
+            <Select label={t("farms_waterloggingRiskLabel")} placeholder={t("bio_selectPlaceholder")} leftSection={<Drop size={16} />} clearable
+              data={waterloggingOpts(t)} value={waterloggingProbability || null} onChange={(v) => setWaterloggingProbability((v as WaterloggingProbability) || "")} comboboxProps={{ withinPortal: true }} />
           </SimpleGridTwo>
           <SimpleGridTwo>
             <div>
-              <Select label="Sunlight availability" placeholder="Select" leftSection={<Sun size={16} />} clearable
-                data={SUNLIGHT_OPTS} value={sunlightAvailability || null} onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+              <Select label={t("field_sunlightAvailability")} placeholder={t("bio_selectPlaceholder")} leftSection={<Sun size={16} />} clearable
+                data={sunlightOpts(t)} value={sunlightAvailability || null} onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} comboboxProps={{ withinPortal: true }} />
               <Text size="xs" c="dimmed" mt={4}>
-                {sunlightAvailability ? SUNLIGHT_DESCRIPTIONS[sunlightAvailability] : "What share of the day does this plot get direct sunlight?"}
+                {sunlightAvailability ? t(SUNLIGHT_DESC_KEY[sunlightAvailability]) : t("farms_sunlightHint")}
               </Text>
             </div>
-            <Select label="Fencing availability" placeholder="Select" leftSection={<Shield size={16} />} clearable
-              data={FENCING_OPTS} value={fencingAvailability || null} onChange={(v) => setFencingAvailability((v as FencingAvailability) || "")} comboboxProps={{ withinPortal: true }} />
+            <Select label={t("field_fencingAvailability")} placeholder={t("bio_selectPlaceholder")} leftSection={<Shield size={16} />} clearable
+              data={fencingOpts(t)} value={fencingAvailability || null} onChange={(v) => setFencingAvailability((v as FencingAvailability) || "")} comboboxProps={{ withinPortal: true }} />
           </SimpleGridTwo>
         </Stack>
 
         <Stack gap="sm">
           <Divider />
           <Textarea
-            label="Note (optional)" placeholder="Any note about this farm…"
+            label={t("bio_noteLabel")} placeholder={t("farms_anyNoteAboutFarmPlaceholder")}
             value={note} onChange={(e) => setNote(e.currentTarget.value)}
             autosize minRows={2} maxRows={5}
           />
@@ -1754,7 +1693,7 @@ function AddFarmModal(
         {/* Also available at the bottom so saving never means scrolling back
             up — same action as the pinned button at the top. */}
         <Button fullWidth size="md" leftSection={<Tree size={18} />} onClick={save} loading={saving}>
-          {editFarm ? "Update farm" : "Save farm"}
+          {editFarm ? t("farms_updateFarm") : t("farms_saveFarm")}
         </Button>
       </Stack>
     </AppModal>
@@ -1790,12 +1729,13 @@ function SectionDivider({ icon, label }: { icon: ReactNode; label: string }) {
 function SelectAllToggle<T extends string>(
   { options, value, onChange }: { options: T[]; value: T[]; onChange: (v: T[]) => void }
 ) {
+  const { t } = useLanguage();
   const allSelected = options.length > 0 && value.length === options.length;
   return (
     <UnstyledButton onClick={() => onChange(allSelected ? [] : options)}>
       <Text size="xs" fw={600} c={allSelected ? "gray.6" : "green.7"}
         style={{ textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>
-        {allSelected ? "Clear" : "Select all"}
+        {allSelected ? t("common_clear") : t("common_selectAll")}
       </Text>
     </UnstyledButton>
   );
@@ -1812,6 +1752,7 @@ function AddPlotModal(
   { opened: boolean; onClose: () => void; farm: Farm; editPlot?: Plot | null }
 ) {
   const { syncNow } = useSession();
+  const { t, language } = useLanguage();
   const [crop, setCrop] = useState("");
   const [sowingDate, setSowingDate] = useState(todayISO());
   const [loc, setLoc] = useState<SessionLocation | null>(null);
@@ -1848,7 +1789,7 @@ function AddPlotModal(
           updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
-        notifications.show({ color: "green", message: `Plot ${editPlot.seq} updated` });
+        notifications.show({ color: "green", message: t("farms_plotUpdatedToast", { seq: editPlot.seq }) });
       } else {
         const { id, seq } = await nextPlotId(farm.id);
         await db.plots.add({
@@ -1858,7 +1799,7 @@ function AddPlotModal(
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farm.farmerId, { updatedAt: now, synced: false });
-        notifications.show({ color: "green", message: `Plot ${seq} added` });
+        notifications.show({ color: "green", message: t("farms_plotAddedToast", { seq }) });
       }
       onClose();
       syncNow().catch(() => {});
@@ -1872,7 +1813,7 @@ function AddPlotModal(
     setDeleting(true);
     try {
       await softDeletePlot(editPlot.id);
-      notifications.show({ color: "green", message: `Plot ${editPlot.seq} removed` });
+      notifications.show({ color: "green", message: t("farms_plotRemovedToast", { seq: editPlot.seq }) });
       onClose();
       syncNow().catch(() => {});
     } finally {
@@ -1881,32 +1822,30 @@ function AddPlotModal(
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={editPlot ? `Edit plot ${editPlot.seq}` : `Add plot to ${farm.id}`}>
+    <AppModal opened={opened} onClose={onClose} title={editPlot ? t("farms_editPlotTitle", { seq: editPlot.seq }) : t("farms_addPlotToTitle", { farmId: farm.id })}>
       <Stack gap="md">
         <LocationCapture loc={loc} onCapture={setLoc} />
-        <Select label="Crop" placeholder="Select crop" data={CROPS} value={crop || null}
+        <Select label={t("field_crop")} placeholder={t("farms_selectCropPlaceholder")} data={CROPS.map((c) => ({ value: c, label: cropLabel(c, language) }))} value={crop || null}
           onChange={(v) => setCrop(v || "")} leftSection={<Plant size={16} />}
           checkIconPosition="right" comboboxProps={{ withinPortal: true }} />
         <TextInput
-          type="date" label="Sowing date" value={sowingDate}
+          type="date" label={t("field_sowingDate")} value={sowingDate}
           onChange={(e) => setSowingDate(e.currentTarget.value)}
           leftSection={<CalendarBlank size={16} />}
         />
 
-        <Divider label={<Group gap={6}><Flask size={14} /> Tests</Group>} labelPosition="left" />
+        <Divider label={<Group gap={6}><Flask size={14} /> {t("farms_testsLabel")}</Group>} labelPosition="left" />
         <Text size="xs" c="dimmed">
-          Water TDS and soil type (clay/sand/silt) are recorded separately, since a plot can be
-          tested more than once — tap the <Drop size={11} weight="fill" style={{ verticalAlign: "middle" }} /> icon on the
-          plot's row for water TDS test history, or the <Flask size={11} weight="fill" style={{ verticalAlign: "middle" }} /> icon
-          for soil type test history — and add a new reading from either.
+          {t("farms_testsHintPart1")} <Drop size={11} weight="fill" style={{ verticalAlign: "middle" }} /> {t("farms_testsHintPart2")}
+          <Flask size={11} weight="fill" style={{ verticalAlign: "middle" }} /> {t("farms_testsHintPart3")}
         </Text>
 
         <Button size="md" leftSection={<Path size={18} />} onClick={save} loading={saving}>
-          {editPlot ? "Update plot" : "Save plot"}
+          {editPlot ? t("farms_updatePlot") : t("farms_savePlot")}
         </Button>
         {editPlot && (
           <Button size="sm" variant="subtle" color="red" leftSection={<Trash size={16} />} onClick={remove} loading={deleting}>
-            Remove plot
+            {t("farms_removePlot")}
           </Button>
         )}
       </Stack>

@@ -9,19 +9,23 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { CaretDown, CheckCircle, ClockCounterClockwise, Plant, SignOut, UsersThree } from "@phosphor-icons/react";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/LanguageContext";
+import LanguageToggle from "@/components/LanguageToggle";
 
 // Sidebar nav items. More sections (villages, farmers, reports…) land here later —
 // this is the one place that needs to grow to add a new admin section.
-const NAV_ITEMS = [
-  { label: "Users", href: "/admin/users/", icon: UsersThree },
-  { label: "Approvals", href: "/admin/approvals/", icon: CheckCircle },
-  { label: "Farm Records", href: "/admin/records/", icon: Plant },
-  { label: "Version History", href: "/admin/versions/", icon: ClockCounterClockwise },
+const NAV_ITEMS: { labelKey: TranslationKey; href: string; icon: typeof UsersThree }[] = [
+  { labelKey: "adminLayout_navUsers", href: "/admin/users/", icon: UsersThree },
+  { labelKey: "adminLayout_navApprovals", href: "/admin/approvals/", icon: CheckCircle },
+  { labelKey: "adminLayout_navRecords", href: "/admin/records/", icon: Plant },
+  { labelKey: "adminLayout_navVersions", href: "/admin/versions/", icon: ClockCounterClockwise },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useLanguage();
   const [opened, { toggle }] = useDisclosure();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checked, setChecked] = useState(false);
@@ -59,32 +63,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Text fw={700} size="xs" c="green.7" style={{ letterSpacing: 1.2, lineHeight: 1 }}>
                 UNCOMPROMISED
               </Text>
-              <Text fw={600} size="sm" style={{ lineHeight: 1.2 }}>Admin</Text>
+              <Text fw={600} size="sm" style={{ lineHeight: 1.2 }}>{t("adminLayout_title")}</Text>
             </div>
           </Group>
 
-          <Menu shadow="md" width={200} position="bottom-end">
-            <Menu.Target>
-              <UnstyledButton>
-                <Group gap={8} wrap="nowrap">
-                  <Avatar color="green" radius="xl" size={32}>
-                    {user.username.slice(0, 2).toUpperCase()}
-                  </Avatar>
-                  <Text size="sm" fw={500} visibleFrom="xs">{user.username}</Text>
-                  <CaretDown size={14} />
-                </Group>
-              </UnstyledButton>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item
-                color="red"
-                leftSection={<SignOut size={16} />}
-                onClick={() => { logout(); router.replace("/login/"); }}
-              >
-                Sign out
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+          <Group gap="sm" wrap="nowrap">
+            <LanguageToggle size="xs" />
+            <Menu shadow="md" width={200} position="bottom-end">
+              <Menu.Target>
+                <UnstyledButton>
+                  <Group gap={8} wrap="nowrap">
+                    <Avatar color="green" radius="xl" size={32}>
+                      {user.username.slice(0, 2).toUpperCase()}
+                    </Avatar>
+                    <Text size="sm" fw={500} visibleFrom="xs">{user.username}</Text>
+                    <CaretDown size={14} />
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  color="red"
+                  leftSection={<SignOut size={16} />}
+                  onClick={() => { logout(); router.replace("/login/"); }}
+                >
+                  {t("common_signOut")}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
         </Group>
       </AppShell.Header>
 
@@ -92,7 +99,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.href}
-            label={item.label}
+            label={t(item.labelKey)}
             leftSection={<item.icon size={18} />}
             active={pathname?.startsWith(item.href)}
             onClick={() => { router.push(item.href); toggle(); }}

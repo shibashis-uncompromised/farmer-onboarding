@@ -10,14 +10,17 @@ import { useLiveQuery } from "dexie-react-hooks";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
 import { computeStatus } from "@/lib/status";
-import { villageByCode } from "@/lib/villages";
+import { villageByCode, villageNameLabel } from "@/lib/villages";
 import { StatusChip } from "@/components/StatusBadge";
 import BioStep from "@/components/BioStep";
 import FarmsStep from "@/components/FarmsStep";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { displayName } from "@/lib/transliterate";
 
 function FarmerInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const { t, language } = useLanguage();
   const id = params.get("id") || "";
   const [active, setActiveState] = useState(() => (params.get("step") === "1" ? 1 : 0));
   useEffect(() => {
@@ -54,7 +57,7 @@ function FarmerInner() {
     return (
       <Center h="100dvh" p="lg">
         <Box ta="center">
-          <Text fw={600} mb="sm">Farmer not found</Text>
+          <Text fw={600} mb="sm">{t("farmer_notFound")}</Text>
           <ActionIcon variant="light" onClick={() => router.push("/home/")}><ArrowLeft /></ActionIcon>
         </Box>
       </Center>
@@ -77,12 +80,12 @@ function FarmerInner() {
         <Container size="sm" pb="md" pt="xs">
           <Group justify="space-between" wrap="nowrap">
             <Group wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
-              <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home/")} aria-label="Back">
+              <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home/")} aria-label={t("common_back")}>
                 <ArrowLeft size={22} />
               </ActionIcon>
               <Box style={{ minWidth: 0 }}>
-                <Text fw={700} size="lg" truncate>{farmer.firstName} {farmer.lastName}</Text>
-                <Text size="xs" c="green.1">{farmer.id} · {village?.name}</Text>
+                <Text fw={700} size="lg" truncate>{displayName(`${farmer.firstName} ${farmer.lastName}`, language)}</Text>
+                <Text size="xs" c="green.1">{farmer.id} · {village ? villageNameLabel(village, language) : ""}</Text>
               </Box>
             </Group>
             <StatusChip status={status} />
@@ -95,13 +98,13 @@ function FarmerInner() {
           active={active} onStepClick={setActive} allowNextStepsSelect size="sm" color="green" mb="lg"
         >
           <Stepper.Step
-            label="Bio Data" description="Personal details"
+            label={t("farmer_bioDataLabel")} description={t("farmer_bioDataDescription")}
             icon={<IdentificationCard size={18} />}
             completedIcon={<CheckCircle size={18} weight="fill" />}
             color={farmer.bioComplete ? "teal" : undefined}
           />
           <Stepper.Step
-            label="Farms & Plots" description="Land & crops"
+            label={t("farmer_farmsPlotsLabel")} description={t("farmer_farmsPlotsDescription")}
             icon={<Tree size={18} />}
             completedIcon={<CheckCircle size={18} weight="fill" />}
             color={farmsComplete ? "teal" : undefined}
@@ -119,10 +122,10 @@ function FarmerInner() {
         {active === 1 && (
           <Group justify="space-between" mt="md">
             <Button variant="default" leftSection={<ArrowLeft size={18} />} onClick={() => setActive(0)}>
-              Bio Data
+              {t("farmer_bioDataLabel")}
             </Button>
             <Button color="teal" leftSection={<Check size={18} weight="bold" />} onClick={() => router.push("/home/")}>
-              Done
+              {t("farmer_done")}
             </Button>
           </Group>
         )}

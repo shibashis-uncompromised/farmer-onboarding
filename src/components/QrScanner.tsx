@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActionIcon, Box, Button, Text } from "@mantine/core";
 import { X, Flashlight } from "@phosphor-icons/react";
 import jsQR from "jsqr";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface Props {
   opened: boolean;
@@ -19,6 +20,7 @@ const SCAN_MAX_DIM = 800;
 const INVERTED_SCAN_EVERY = 6;
 
 export default function QrScanner({ opened, onClose, onScan, onManual }: Props) {
+  const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -29,7 +31,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
   const canvasSizeRef = useRef({ w: 0, h: 0 });
   const frameRef = useRef(0);
   const firedRef = useRef(false);
-  const [hint, setHint] = useState("Point the camera at the QR code");
+  const [hint, setHint] = useState(t("qrScanner_pointCamera"));
   const [blocked, setBlocked] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -38,7 +40,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
     if (!opened) return;
     firedRef.current = false;
     setBlocked(false);
-    setHint("Point the camera at the QR code");
+    setHint(t("qrScanner_pointCamera"));
     start();
 
     const onVis = () => { if (document.hidden) stop(); else start(); };
@@ -76,7 +78,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
     } catch (e) {
       console.warn("Camera error:", e);
       setBlocked(true);
-      setHint("Camera blocked — allow permission and retry");
+      setHint(t("qrScanner_cameraBlocked"));
     }
   }
 
@@ -164,14 +166,14 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
       <Box style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <ActionIcon
           variant="filled" color="dark" radius="xl" size="xl" onClick={() => { stop(); onClose(); }}
-          aria-label="Close" style={{ position: "absolute", top: "max(16px, env(safe-area-inset-top))", right: 16 }}
+          aria-label={t("common_close")} style={{ position: "absolute", top: "max(16px, env(safe-area-inset-top))", right: 16 }}
         >
           <X size={22} weight="bold" />
         </ActionIcon>
         {torchAvailable && (
           <ActionIcon
             variant="filled" color={torchOn ? "yellow" : "dark"} radius="xl" size="xl" onClick={toggleTorch}
-            aria-label="Torch" style={{ position: "absolute", top: "max(16px, env(safe-area-inset-top))", left: 16 }}
+            aria-label={t("qrScanner_torchAria")} style={{ position: "absolute", top: "max(16px, env(safe-area-inset-top))", left: 16 }}
           >
             <Flashlight size={22} weight={torchOn ? "fill" : "bold"} />
           </ActionIcon>
@@ -192,7 +194,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
             mt="md" variant="white" onClick={start}
             style={{ position: "absolute", bottom: "10%" }}
           >
-            Retry camera
+            {t("qrScanner_retryCamera")}
           </Button>
         )}
         {onManual && (
@@ -201,7 +203,7 @@ export default function QrScanner({ opened, onClose, onScan, onManual }: Props) 
             onClick={() => { stop(); onClose(); onManual(); }}
             style={{ position: "absolute", bottom: "calc(24px + env(safe-area-inset-bottom))" }}
           >
-            Type code manually
+            {t("qrScanner_typeManually")}
           </Button>
         )}
       </Box>

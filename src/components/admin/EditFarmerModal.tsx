@@ -7,7 +7,9 @@ import AppModal from "@/components/AppModal";
 import SeedsInput from "@/components/SeedsInput";
 import { apiDirectUpdateEntityVersion } from "@/lib/api";
 import { getSession } from "@/lib/session";
-import { FINANCIAL_CAPACITY_OPTS, LANDHOLDING_OPTS, ADOPTION_LEVEL_OPTS } from "@/lib/dynamicFieldMeta";
+import { financialCapacityOpts, landholdingOpts, adoptionLevelOpts } from "@/lib/dynamicFieldMeta";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { displayName } from "@/lib/transliterate";
 import type { Farmer, FinancialCapacity, Landholding, AdoptionLevel, SeedPackage } from "@/lib/types";
 
 interface Props {
@@ -22,6 +24,7 @@ interface Props {
 // don't go through versioning at all. Saving applies immediately as the new
 // `current` version; there's no pending step for admin's own edits.
 export default function EditFarmerModal({ farmer, opened, onClose, onSaved }: Props) {
+  const { t, language } = useLanguage();
   const [financialCapacity, setFinancialCapacity] = useState<FinancialCapacity | "">("");
   const [landholding, setLandholding] = useState<Landholding | "">("");
   const [adoptionLevel, setAdoptionLevel] = useState<AdoptionLevel | "">("");
@@ -52,40 +55,40 @@ export default function EditFarmerModal({ farmer, opened, onClose, onSaved }: Pr
           adoptionLevel: adoptionLevel || null,
         },
       });
-      notifications.show({ color: "green", message: `Saved — applied immediately for ${farmer.firstName} ${farmer.lastName}` });
+      notifications.show({ color: "green", message: t("editFarmer_savedToast", { name: displayName(`${farmer.firstName} ${farmer.lastName}`, language) }) });
       onSaved();
       onClose();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save changes" });
+      notifications.show({ color: "red", message: e?.message || t("editFarmer_saveError") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={farmer ? `Edit ${farmer.firstName} ${farmer.lastName}` : "Edit farmer"} size="md">
+    <AppModal opened={opened} onClose={onClose} title={farmer ? t("editFarmer_titleWithName", { name: displayName(`${farmer.firstName} ${farmer.lastName}`, language) }) : t("editFarmer_title")} size="md">
       {farmer && (
         <Stack gap="md">
-          <Text size="sm" c="dimmed">{farmer.id} · village {farmer.villageCode} — no approval needed, this saves directly.</Text>
+          <Text size="sm" c="dimmed">{t("editFarmer_metaLine", { id: farmer.id, village: farmer.villageCode })}</Text>
           <Select
-            label="Financial capacity" placeholder="Not set" clearable
-            data={FINANCIAL_CAPACITY_OPTS} value={financialCapacity || null}
+            label={t("field_financialCapacity")} placeholder={t("editFarmer_notSet")} clearable
+            data={financialCapacityOpts(t)} value={financialCapacity || null}
             onChange={(v) => setFinancialCapacity((v as FinancialCapacity) || "")}
           />
           <Select
-            label="Landholding" placeholder="Not set" clearable
-            data={LANDHOLDING_OPTS} value={landholding || null}
+            label={t("field_landholding")} placeholder={t("editFarmer_notSet")} clearable
+            data={landholdingOpts(t)} value={landholding || null}
             onChange={(v) => setLandholding((v as Landholding) || "")}
           />
           <Select
-            label="Adoption level" placeholder="Not set" clearable
-            data={ADOPTION_LEVEL_OPTS} value={adoptionLevel || null}
+            label={t("field_adoptionLevel")} placeholder={t("editFarmer_notSet")} clearable
+            data={adoptionLevelOpts(t)} value={adoptionLevel || null}
             onChange={(v) => setAdoptionLevel((v as AdoptionLevel) || "")}
           />
           <SeedsInput value={seeds} onChange={setSeeds} />
           <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button onClick={save} loading={saving}>Save</Button>
+            <Button variant="default" onClick={onClose}>{t("common_cancel")}</Button>
+            <Button onClick={save} loading={saving}>{t("common_save")}</Button>
           </Group>
         </Stack>
       )}

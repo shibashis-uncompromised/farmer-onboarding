@@ -11,11 +11,16 @@ import AppModal from "@/components/AppModal";
 import UserFormModal from "@/components/UserFormModal";
 import { apiListUsers, apiDeleteUser, type AdminUser, type Role } from "@/lib/api";
 import { getSession } from "@/lib/session";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/LanguageContext";
 
 const ROLE_COLOR: Record<Role, string> = { admin: "green", reviewer: "blue", poc: "gray" };
-const ROLE_LABEL: Record<Role, string> = { admin: "Admin", reviewer: "Reviewer", poc: "POC" };
+const ROLE_LABEL_KEY: Record<Role, TranslationKey> = {
+  admin: "adminUsers_roleAdmin", reviewer: "adminUsers_roleReviewer", poc: "adminUsers_rolePoc",
+};
 
 export default function AdminUsersPage() {
+  const { t } = useLanguage();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -32,7 +37,7 @@ export default function AdminUsersPage() {
       const { users } = await apiListUsers(session.token);
       setUsers(users);
     } catch (e: any) {
-      setError(e?.message || "Could not load users");
+      setError(e?.message || t("adminUsers_couldNotLoad"));
     }
   };
 
@@ -55,11 +60,11 @@ export default function AdminUsersPage() {
     setDeleting(true);
     try {
       await apiDeleteUser(session.token, deleteTarget.id);
-      notifications.show({ color: "green", message: `User "${deleteTarget.username}" deleted` });
+      notifications.show({ color: "green", message: t("adminUsers_userDeletedToast", { username: deleteTarget.username }) });
       setDeleteTarget(null);
       load();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not delete user" });
+      notifications.show({ color: "red", message: e?.message || t("adminUsers_couldNotDelete") });
     } finally {
       setDeleting(false);
     }
@@ -69,14 +74,14 @@ export default function AdminUsersPage() {
     <Stack gap="lg">
       <Group justify="space-between" wrap="wrap">
         <div>
-          <Title order={3}>Users</Title>
-          <Text c="dimmed" size="sm">Manage logins and assign roles — admin, reviewer, or POC.</Text>
+          <Title order={3}>{t("adminUsers_title")}</Title>
+          <Text c="dimmed" size="sm">{t("adminUsers_subtitle")}</Text>
         </div>
-        <Button leftSection={<Plus size={18} />} onClick={openCreate}>Add user</Button>
+        <Button leftSection={<Plus size={18} />} onClick={openCreate}>{t("adminUsers_addUser")}</Button>
       </Group>
 
       <TextInput
-        placeholder="Search by username or role"
+        placeholder={t("adminUsers_searchPlaceholder")}
         leftSection={<MagnifyingGlass size={16} />}
         value={query} onChange={(e) => setQuery(e.currentTarget.value)}
         maw={360}
@@ -91,7 +96,7 @@ export default function AdminUsersPage() {
             <Stack align="center" gap={6}>
               <WarningCircle size={28} color="var(--mantine-color-red-6)" />
               <Text c="red" size="sm">{error}</Text>
-              <Button variant="light" size="xs" onClick={load}>Retry</Button>
+              <Button variant="light" size="xs" onClick={load}>{t("adminUsers_retry")}</Button>
             </Stack>
           </Center>
         )}
@@ -99,7 +104,7 @@ export default function AdminUsersPage() {
           <Center p="xl">
             <Stack align="center" gap={6}>
               <UsersThree size={28} color="var(--mantine-color-gray-5)" />
-              <Text c="dimmed" size="sm">{users.length === 0 ? "No users yet" : "No users match your search"}</Text>
+              <Text c="dimmed" size="sm">{users.length === 0 ? t("adminUsers_noUsersYet") : t("adminUsers_noUsersMatch")}</Text>
             </Stack>
           </Center>
         )}
@@ -108,9 +113,9 @@ export default function AdminUsersPage() {
             <Table verticalSpacing="sm" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Username</Table.Th>
-                  <Table.Th>Role</Table.Th>
-                  <Table.Th>Created</Table.Th>
+                  <Table.Th>{t("adminUsers_colUsername")}</Table.Th>
+                  <Table.Th>{t("adminUsers_colRole")}</Table.Th>
+                  <Table.Th>{t("adminUsers_colCreated")}</Table.Th>
                   <Table.Th w={90} />
                 </Table.Tr>
               </Table.Thead>
@@ -119,7 +124,7 @@ export default function AdminUsersPage() {
                   <Table.Tr key={u.id}>
                     <Table.Td fw={500}>{u.username}</Table.Td>
                     <Table.Td>
-                      <Badge color={ROLE_COLOR[u.role]} variant="light">{ROLE_LABEL[u.role]}</Badge>
+                      <Badge color={ROLE_COLOR[u.role]} variant="light">{t(ROLE_LABEL_KEY[u.role])}</Badge>
                     </Table.Td>
                     <Table.Td>
                       <Text c="dimmed" size="sm">
@@ -128,12 +133,12 @@ export default function AdminUsersPage() {
                     </Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        <Tooltip label="Edit">
+                        <Tooltip label={t("common_edit")}>
                           <ActionIcon variant="subtle" color="gray" onClick={() => openEdit(u)}>
                             <PencilSimple size={16} />
                           </ActionIcon>
                         </Tooltip>
-                        <Tooltip label="Delete">
+                        <Tooltip label={t("common_delete")}>
                           <ActionIcon variant="subtle" color="red" onClick={() => setDeleteTarget(u)}>
                             <Trash size={16} />
                           </ActionIcon>
@@ -155,15 +160,15 @@ export default function AdminUsersPage() {
         editingUser={editingUser}
       />
 
-      <AppModal opened={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete user" size="sm">
+      <AppModal opened={!!deleteTarget} onClose={() => setDeleteTarget(null)} title={t("adminUsers_deleteUserTitle")} size="sm">
         <Stack gap="md">
           <Text size="sm">
-            Delete <b>{deleteTarget?.username}</b>? They&apos;ll no longer be able to sign in. This can&apos;t be undone.
+            {t("adminUsers_deleteConfirmText", { username: deleteTarget?.username || "" })}
           </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="default" onClick={() => setDeleteTarget(null)}>{t("common_cancel")}</Button>
             <Button color="red" onClick={confirmDelete} loading={deleting} leftSection={<Trash size={18} />}>
-              Delete
+              {t("common_delete")}
             </Button>
           </Group>
         </Stack>

@@ -9,12 +9,13 @@ import AppModal from "@/components/AppModal";
 import AutoCloseMultiSelect from "@/components/AutoCloseMultiSelect";
 import { apiDirectUpdateEntityVersion } from "@/lib/api";
 import { getSession } from "@/lib/session";
-import { PREVIOUS_CROPS } from "@/lib/crops";
+import { PREVIOUS_CROPS, cropLabel } from "@/lib/crops";
 import {
-  MOBILE_COVERAGE_OPTS, SHAPE_OPTS, FARMER_FOCUS_OPTS, WATER_SOURCE_OPTS, IRRIGATION_OPTS,
-  SEASON_OPTS, KNOWN_ISSUE_OPTS, ANIMAL_PRESSURE_OPTS, ACCESSIBILITY_OPTS, TOOL_OPTS,
-  BENCHMARK_OPTS, GRADIENT_OPTS, WATERLOGGING_OPTS, SUNLIGHT_OPTS, FENCING_OPTS,
+  mobileCoverageOpts, shapeOpts, farmerFocusOpts, waterSourceOpts, irrigationOpts,
+  seasonOpts, knownIssueOpts, animalPressureOpts, accessibilityOpts, toolOpts,
+  benchmarkOpts, gradientOpts, waterloggingOpts, sunlightOpts, fencingOpts,
 } from "@/lib/dynamicFieldMeta";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import type {
   Farm, MobileCoverage, FarmShape, FarmerFocus, WaterSource, IrrigationAvailable, Season,
   KnownIssue, AnimalPressure, Accessibility, FarmTool, BenchmarkComparison, Gradient,
@@ -55,6 +56,7 @@ interface Props {
 // observations. Static fields (location, boundary, alias…) aren't editable
 // here. Saving applies immediately as the new `current` version.
 export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSaved }: Props) {
+  const { t, language } = useLanguage();
   const [treeCountBig, setTreeCountBig] = useState<number | "">("");
   const [treeCountSmall, setTreeCountSmall] = useState<number | "">("");
   const [mobileCoverage, setMobileCoverage] = useState<MobileCoverage | "">("");
@@ -141,93 +143,93 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
       // untouched, so saving never silently drops a field.
       const dynamicData = { ...baselineOf(farm), ...edited };
       await apiDirectUpdateEntityVersion(session.token, { entityType: "farm", entityId: farm.id, dynamicData });
-      notifications.show({ color: "green", message: `Saved — applied immediately for farm ${farm.id}` });
+      notifications.show({ color: "green", message: t("editFarm_savedToast", { id: farm.id }) });
       onSaved();
       onClose();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not save changes" });
+      notifications.show({ color: "red", message: e?.message || t("editFarm_saveError") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={farm ? `Edit farm ${farm.id}` : "Edit farm"} size="lg">
+    <AppModal opened={opened} onClose={onClose} title={farm ? t("editFarm_titleWithId", { id: farm.id }) : t("editFarm_title")} size="lg">
       {farm && (
         <Stack gap="sm">
           <Text size="sm" c="dimmed">
-            {farmerLabel ? `${farmerLabel} · ` : ""}village {farm.villageCode} — no approval needed, this saves directly.
+            {t("editFarm_metaLine", { prefix: farmerLabel ? `${farmerLabel} · ` : "", village: farm.villageCode })}
           </Text>
 
-          <Divider label="Physical fieldwork" labelPosition="left" />
+          <Divider label={t("farms_physicalFieldwork")} labelPosition="left" />
           <Group grow>
-            <NumberInput label="Big trees" min={0} value={treeCountBig} onChange={(v) => setTreeCountBig(v === "" ? "" : Number(v))} />
-            <NumberInput label="Small trees" min={0} value={treeCountSmall} onChange={(v) => setTreeCountSmall(v === "" ? "" : Number(v))} />
+            <NumberInput label={t("farms_bigTrees")} min={0} value={treeCountBig} onChange={(v) => setTreeCountBig(v === "" ? "" : Number(v))} />
+            <NumberInput label={t("farms_smallTrees")} min={0} value={treeCountSmall} onChange={(v) => setTreeCountSmall(v === "" ? "" : Number(v))} />
           </Group>
           <Group grow>
-            <Select label="Mobile coverage" data={MOBILE_COVERAGE_OPTS} value={mobileCoverage || null} clearable
+            <Select label={t("field_mobileCoverage")} data={mobileCoverageOpts(t)} value={mobileCoverage || null} clearable
               onChange={(v) => setMobileCoverage((v as MobileCoverage) || "")} />
-            <Select label="Farm shape" data={SHAPE_OPTS} value={shapeOverride || null} clearable
+            <Select label={t("field_shapeOverride")} data={shapeOpts(t)} value={shapeOverride || null} clearable
               onChange={(v) => setShapeOverride((v as FarmShape) || "")} />
           </Group>
-          <NumberInput label="Plot size override (sq ft)" min={0} value={plotSizeSqFtOverride}
+          <NumberInput label={t("field_plotSizeSqFtOverride")} min={0} value={plotSizeSqFtOverride}
             onChange={(v) => setPlotSizeSqFtOverride(v === "" ? "" : Number(v))} />
 
-          <Divider label="From farmer" labelPosition="left" />
-          <Select label="Farmer's visit frequency" data={FARMER_FOCUS_OPTS} value={farmerFocus || null} clearable
+          <Divider label={t("farms_fromFarmer")} labelPosition="left" />
+          <Select label={t("field_farmerFocus")} data={farmerFocusOpts(t)} value={farmerFocus || null} clearable
             onChange={(v) => setFarmerFocus((v as FarmerFocus) || "")} />
-          <AutoCloseMultiSelect label="Water source" data={WATER_SOURCE_OPTS} value={waterSource}
+          <AutoCloseMultiSelect label={t("field_waterSource")} data={waterSourceOpts(t)} value={waterSource}
             onChange={(v) => setWaterSource(v as WaterSource[])} />
-          <AutoCloseMultiSelect label="Irrigation available" data={IRRIGATION_OPTS} value={irrigationAvailable}
+          <AutoCloseMultiSelect label={t("field_irrigationAvailable")} data={irrigationOpts(t)} value={irrigationAvailable}
             onChange={(v) => setIrrigationAvailable(v as IrrigationAvailable[])} />
-          <AutoCloseMultiSelect label="Seasons possible" data={SEASON_OPTS} value={seasonsPossible}
+          <AutoCloseMultiSelect label={t("field_seasonsPossible")} data={seasonOpts(t)} value={seasonsPossible}
             onChange={(v) => setSeasonsPossible(v as Season[])} />
           {seasonsPossible.includes("other" as Season) && (
-            <TextInput label="Seasons — other, specify" value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} />
+            <TextInput label={t("editFarm_seasonsOtherSpecify")} value={seasonsPossibleOther} onChange={(e) => setSeasonsPossibleOther(e.currentTarget.value)} />
           )}
-          <AutoCloseMultiSelect label="Known issues" data={KNOWN_ISSUE_OPTS} value={knownIssues}
+          <AutoCloseMultiSelect label={t("field_knownIssues")} data={knownIssueOpts(t)} value={knownIssues}
             onChange={(v) => setKnownIssues(v as KnownIssue[])} />
           {knownIssues.includes("other" as KnownIssue) && (
-            <TextInput label="Known issues — other, specify" value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} />
+            <TextInput label={t("editFarm_knownIssuesOtherSpecify")} value={knownIssuesOther} onChange={(e) => setKnownIssuesOther(e.currentTarget.value)} />
           )}
-          <Select label="Previous crop" data={PREVIOUS_CROPS} value={previousCrop || null} searchable clearable
+          <Select label={t("field_previousCrop")} data={PREVIOUS_CROPS.map((c) => ({ value: c, label: cropLabel(c, language) }))} value={previousCrop || null} searchable clearable
             onChange={(v) => setPreviousCrop(v || "")} />
           <Group grow>
-            <NumberInput label="Previous crop production (quintals)" min={0} value={prevQuintals}
+            <NumberInput label={t("editFarm_previousProductionQuintals")} min={0} value={prevQuintals}
               onChange={(v) => setPrevQuintals(v === "" ? "" : Number(v))} />
-            <Select label="Vs. benchmark" data={BENCHMARK_OPTS} value={prevBenchmark || null} clearable
+            <Select label={t("farms_vsBenchmarkLabel")} data={benchmarkOpts(t)} value={prevBenchmark || null} clearable
               onChange={(v) => setPrevBenchmark((v as BenchmarkComparison) || "")} />
           </Group>
-          <AutoCloseMultiSelect label="Animal pressure" data={ANIMAL_PRESSURE_OPTS} value={animalPressure}
+          <AutoCloseMultiSelect label={t("field_animalPressure")} data={animalPressureOpts(t)} value={animalPressure}
             onChange={(v) => setAnimalPressure(v as AnimalPressure[])} />
           {animalPressure.includes("other" as AnimalPressure) && (
-            <TextInput label="Animal pressure — other, specify" value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} />
+            <TextInput label={t("editFarm_animalPressureOtherSpecify")} value={animalPressureOther} onChange={(e) => setAnimalPressureOther(e.currentTarget.value)} />
           )}
-          <Select label="Accessibility" data={ACCESSIBILITY_OPTS} value={accessibility || null} clearable
+          <Select label={t("field_accessibility")} data={accessibilityOpts(t)} value={accessibility || null} clearable
             onChange={(v) => setAccessibility((v as Accessibility) || "")} />
-          <AutoCloseMultiSelect label="Tools available" data={TOOL_OPTS} value={toolsAvailable}
+          <AutoCloseMultiSelect label={t("field_toolsAvailable")} data={toolOpts(t)} value={toolsAvailable}
             onChange={(v) => setToolsAvailable(v as FarmTool[])} />
           {toolsAvailable.includes("other" as FarmTool) && (
-            <TextInput label="Tools — other, specify" value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} />
+            <TextInput label={t("editFarm_toolsOtherSpecify")} value={toolsAvailableOther} onChange={(e) => setToolsAvailableOther(e.currentTarget.value)} />
           )}
 
-          <Divider label="Supervisor observation" labelPosition="left" />
+          <Divider label={t("farms_supervisorObservation")} labelPosition="left" />
           <Group grow>
-            <Select label="Gradient" data={GRADIENT_OPTS} value={gradient || null} clearable
+            <Select label={t("field_gradient")} data={gradientOpts(t)} value={gradient || null} clearable
               onChange={(v) => setGradient((v as Gradient) || "")} />
-            <Select label="Waterlogging probability" data={WATERLOGGING_OPTS} value={waterloggingProbability || null} clearable
+            <Select label={t("field_waterloggingProbability")} data={waterloggingOpts(t)} value={waterloggingProbability || null} clearable
               onChange={(v) => setWaterloggingProbability((v as WaterloggingProbability) || "")} />
           </Group>
           <Group grow>
-            <Select label="Sunlight availability" data={SUNLIGHT_OPTS} value={sunlightAvailability || null} clearable
+            <Select label={t("field_sunlightAvailability")} data={sunlightOpts(t)} value={sunlightAvailability || null} clearable
               onChange={(v) => setSunlightAvailability((v as SunlightAvailability) || "")} />
-            <Select label="Fencing availability" data={FENCING_OPTS} value={fencingAvailability || null} clearable
+            <Select label={t("field_fencingAvailability")} data={fencingOpts(t)} value={fencingAvailability || null} clearable
               onChange={(v) => setFencingAvailability((v as FencingAvailability) || "")} />
           </Group>
 
           <Group justify="flex-end" mt="sm">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button onClick={save} loading={saving}>Save</Button>
+            <Button variant="default" onClick={onClose}>{t("common_cancel")}</Button>
+            <Button onClick={save} loading={saving}>{t("common_save")}</Button>
           </Group>
         </Stack>
       )}

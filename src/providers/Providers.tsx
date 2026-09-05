@@ -7,6 +7,7 @@ import { theme } from "@/lib/theme";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { setDynamicVillages } from "@/lib/villages";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 
 // Mirrors user-created villages from IndexedDB into the villages.ts cache, so
 // the app's synchronous village lookups include them. Renders nothing.
@@ -72,8 +73,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <MantineProvider theme={theme} defaultColorScheme="light">
       <Notifications position="top-center" />
-      <VillageCache />
-      {children}
+      <LanguageProvider>
+        <VillageCache />
+        {children}
+      </LanguageProvider>
     </MantineProvider>
   );
 }

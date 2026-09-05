@@ -15,7 +15,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
 import SessionGate, { useSession } from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { villageByCode, villagesForUser, setDynamicVillages } from "@/lib/villages";
+import { villageByCode, villagesForUser, setDynamicVillages, villageNameLabel, villageBlockLabel } from "@/lib/villages";
 import { computeStatus } from "@/lib/status";
 import { StatusIcon } from "@/components/StatusBadge";
 import AddFarmerModal from "@/components/AddFarmerModal";
@@ -25,23 +25,28 @@ import QrScanner from "@/components/QrScanner";
 import { parseQr, looksLikeFarmerCode, isReservedImportedFarmerCode } from "@/lib/qr";
 import { exportAllZip } from "@/lib/export";
 import { logout } from "@/lib/auth";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import type { TFunc } from "@/lib/dynamicFieldMeta";
+import { displayName } from "@/lib/transliterate";
+import LanguageToggle from "@/components/LanguageToggle";
 
 // Short "time ago" label for the farmer tile's last-updated stamp.
-function timeAgo(ts?: number): string {
+function timeAgo(ts: number | undefined, t: TFunc): string {
   if (!ts) return "";
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (s < 60) return "just now";
+  if (s < 60) return t("home_timeJustNow");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t("home_timeMinutesAgo", { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return t("home_timeHoursAgo", { h });
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return t("home_timeDaysAgo", { d });
   return new Date(ts).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function HomeInner() {
   const router = useRouter();
+  const { t, language } = useLanguage();
   const { user, location, syncState, syncNow } = useSession();
   const [createVillageOpen, setCreateVillageOpen] = useState(false);
   // Villages this user may see: preset (region/allowlist) + user-created ones
@@ -142,9 +147,9 @@ function HomeInner() {
     setExporting(true);
     try {
       const { farmers: n } = await exportAllZip();
-      notifications.show({ color: "green", message: `Exported ${n} farmer record(s)` });
+      notifications.show({ color: "green", message: t("home_exportedRecords", { n }) });
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Export failed" });
+      notifications.show({ color: "red", message: e?.message || t("home_exportFailed") });
     } finally {
       setExporting(false);
     }
@@ -152,8 +157,8 @@ function HomeInner() {
 
   const doSync = async () => {
     const r = await syncNow();
-    if (r) notifications.show({ color: "green", message: `Synced ✓  ↑ ${r.pushed} · ↓ ${r.pulled}` });
-    else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: "You're offline" });
+    if (r) notifications.show({ color: "green", message: t("home_syncedMessage", { pushed: r.pushed, pulled: r.pulled }) });
+    else if (typeof navigator !== "undefined" && !navigator.onLine) notifications.show({ color: "red", message: t("home_offline") });
   };
 
   // Wipe ALL local data on this device (farmers/farms/plots/photos/samples). The server
@@ -161,7 +166,7 @@ function HomeInner() {
   const CLEAR_PW = "admin123";
   const doClear = async () => {
     if (clearPw !== CLEAR_PW) {
-      notifications.show({ color: "red", message: "Incorrect password" });
+      notifications.show({ color: "red", message: t("home_incorrectPassword") });
       return;
     }
     setClearing(true);
@@ -173,12 +178,12 @@ function HomeInner() {
           .filter((key) => key.startsWith("fo_farmer_step_"))
           .forEach((key) => sessionStorage.removeItem(key));
       } catch {}
-      notifications.show({ color: "green", message: "Local data cleared on this device" });
+      notifications.show({ color: "green", message: t("home_localDataCleared") });
       setClearOpen(false);
       setClearPw("");
       setTimeout(() => window.location.reload(), 250);
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not clear data" });
+      notifications.show({ color: "red", message: e?.message || t("home_couldNotClear") });
     } finally {
       setClearing(false);
     }
@@ -189,14 +194,14 @@ function HomeInner() {
   const onScan = async (raw: string) => {
     const { code } = parseQr(raw);
     if (!looksLikeFarmerCode(code)) {
-      notifications.show({ color: "red", message: `Not a farmer QR: ${code || "empty"}` });
+      notifications.show({ color: "red", message: t("home_notFarmerQr", { code: code || t("home_empty") }) });
       setScanOpen(false);
       return;
     }
     setScanOpen(false);
     const existing = await db.farmers.get(code);
     if (existing?.deleted) {
-      notifications.show({ color: "yellow", message: `${code} is hidden/deleted` });
+      notifications.show({ color: "yellow", message: t("home_hiddenDeleted", { code }) });
     } else if (existing) {
       router.push(`/farmer/?id=${encodeURIComponent(code)}`);
     } else if (isReservedImportedFarmerCode(code)) {
@@ -207,7 +212,7 @@ function HomeInner() {
       } else {
         notifications.show({
           color: r ? "yellow" : "red",
-          message: r ? `${code} is not available locally yet. Sync again before opening it.` : `${code} is pre-registered. Connect and sync before opening it.`,
+          message: r ? t("home_notAvailableSync", { code }) : t("home_preRegistered", { code }),
         });
       }
     } else {
@@ -231,17 +236,17 @@ function HomeInner() {
             <Group gap={10}>
               <Image src="/icons/logo.png" alt="Uncompromised" w={38} h={38} radius="md" />
               <div>
-                <Text fw={700} fz={9} style={{ letterSpacing: 1, opacity: 0.85 }}>UNCOMPROMISED</Text>
-                <Title order={4} lh={1.1}>Farmer Onboarding</Title>
+                <Text fw={700} fz={9} style={{ letterSpacing: 1, opacity: 0.85 }}>{t("common_brand")}</Text>
+                <Title order={4} lh={1.1}>{t("common_appName")}</Title>
               </div>
             </Group>
             <Group gap={2}>
               {appVersion && (
-                <Text size="xs" c="green.1" fw={600} mr={2} title="App version">{appVersion}</Text>
+                <Text size="xs" c="green.1" fw={600} mr={2} title={t("home_appVersionTitle")}>{appVersion}</Text>
               )}
               <ActionIcon
-                variant="subtle" color="gray.0" size="lg" onClick={doSync} aria-label="Sync"
-                title={syncState === "offline" ? "Offline" : syncState === "error" ? "Sync issue — tap to retry" : syncState === "syncing" ? "Syncing…" : "Synced"}
+                variant="subtle" color="gray.0" size="lg" onClick={doSync} aria-label={t("home_syncAriaLabel")}
+                title={syncState === "offline" ? t("home_syncOffline") : syncState === "error" ? t("home_syncIssue") : syncState === "syncing" ? t("home_syncing") : t("home_synced")}
               >
                 {syncState === "syncing" ? <ArrowsClockwise size={20} className="fo-spin" />
                   : syncState === "offline" ? <CloudSlash size={20} />
@@ -250,39 +255,46 @@ function HomeInner() {
               </ActionIcon>
               <Menu position="bottom-end" withArrow shadow="md">
               <Menu.Target>
-                <ActionIcon variant="subtle" color="gray.0" size="lg" aria-label="Menu">
+                <ActionIcon variant="subtle" color="gray.0" size="lg" aria-label={t("home_menuAriaLabel")}>
                   <DotsThreeVertical size={24} weight="bold" />
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
+                <Box px="sm" py={6}>
+                  <Group justify="space-between" align="center" wrap="nowrap">
+                    <Text size="xs" c="dimmed">{t("common_language")}</Text>
+                    <LanguageToggle size="xs" />
+                  </Group>
+                </Box>
+                <Menu.Divider />
                 {user.role === "admin" && (
                   <>
                     <Menu.Item leftSection={<ShieldCheck size={16} />} onClick={() => router.push("/admin/")}>
-                      Admin view
+                      {t("home_adminView")}
                     </Menu.Item>
                     <Menu.Divider />
                   </>
                 )}
                 <Menu.Item leftSection={<Flask size={16} />} onClick={() => router.push("/scan-sample/")}>
-                  Scan sample
+                  {t("home_scanSample")}
                 </Menu.Item>
                 <Menu.Item leftSection={<MapPinPlus size={16} />} onClick={() => setCreateVillageOpen(true)}>
-                  New village
+                  {t("home_newVillage")}
                 </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item leftSection={<CloudArrowUp size={16} />} onClick={doSync} disabled={syncState === "syncing"}
                   rightSection={unsynced > 0 ? <Text size="xs" c="orange.7" fw={700}>{unsynced}</Text> : null}>
-                  {syncState === "syncing" ? "Syncing…" : "Sync now"}
+                  {syncState === "syncing" ? t("home_syncing") : t("home_syncNow")}
                 </Menu.Item>
                 <Menu.Item leftSection={<DownloadSimple size={16} />} onClick={doExport} disabled={exporting}>
-                  {exporting ? "Exporting…" : "Export all (ZIP)"}
+                  {exporting ? t("home_exporting") : t("home_exportAll")}
                 </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item color="red" leftSection={<Trash size={16} />} onClick={() => { setClearPw(""); setClearOpen(true); }}>
-                  Clear local data
+                  {t("home_clearLocalData")}
                 </Menu.Item>
                 <Menu.Item color="red" leftSection={<SignOut size={16} />} onClick={() => { logout(); router.replace("/login/"); }}>
-                  Sign out
+                  {t("common_signOut")}
                 </Menu.Item>
               </Menu.Dropdown>
               </Menu>
@@ -291,7 +303,7 @@ function HomeInner() {
 
           <Group gap="xs" wrap="nowrap" align="center">
             <Select
-              data={villages.map((v) => ({ value: v.code, label: `${v.name} · ${v.block}` }))}
+              data={villages.map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} · ${villageBlockLabel(v, language)}` }))}
               value={village || null} onChange={(v) => v && setVillage(v)} allowDeselect={false}
               checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
               leftSection={<MapPin size={18} />}
@@ -300,13 +312,13 @@ function HomeInner() {
             <Button variant="white" color="dark" size="md" radius="md" px="sm"
               leftSection={<MapPinPlus size={18} />} onClick={() => setCreateVillageOpen(true)}
               styles={{ label: { fontSize: 13 } }}>
-              New village
+              {t("home_newVillage")}
             </Button>
           </Group>
           {location && (
             <Group gap={6} mt={6} c="green.1">
               <MapPin size={13} />
-              <Text size="xs">Location · {location.lat.toFixed(4)}, {location.lng.toFixed(4)}</Text>
+              <Text size="xs">{t("home_location", { lat: location.lat.toFixed(4), lng: location.lng.toFixed(4) })}</Text>
             </Group>
           )}
         </Container>
@@ -314,26 +326,26 @@ function HomeInner() {
 
       <Container size="sm" py="md">
         <TextInput
-          placeholder="Search by name, C/o, ID or phone" value={search}
+          placeholder={t("home_searchPlaceholder")} value={search}
           onChange={(e) => setSearch(e.currentTarget.value)} size="md" radius="md" mb="sm"
           leftSection={<MagnifyingGlass size={18} />}
         />
         <Group gap="sm" mb="md" wrap="nowrap" align="flex-start">
           <Select
             value={typeFilter} onChange={(v) => setTypeFilter((v as "all" | "lead" | "existing") || "all")}
-            data={[{ value: "all", label: "All" }, { value: "lead", label: "Leads" }, { value: "existing", label: "Existing" }]}
+            data={[{ value: "all", label: t("home_filterAll") }, { value: "lead", label: t("home_filterLeads") }, { value: "existing", label: t("home_filterExisting") }]}
             allowDeselect={false} checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
-            leftSection={<UsersThree size={16} />} aria-label="Filter by type"
+            leftSection={<UsersThree size={16} />} aria-label={t("home_filterTypeAriaLabel")}
           />
           <Select
             value={sortBy} onChange={(v) => setSortBy((v as "recent" | "oldest" | "name") || "recent")}
             data={[
-              { value: "recent", label: "Recently updated" },
-              { value: "oldest", label: "Oldest first" },
-              { value: "name", label: "Name (A–Z)" },
+              { value: "recent", label: t("home_sortRecent") },
+              { value: "oldest", label: t("home_sortOldest") },
+              { value: "name", label: t("home_sortName") },
             ]}
             allowDeselect={false} checkIconPosition="right" size="md" radius="md" style={{ flex: 1 }}
-            leftSection={<Clock size={16} />} aria-label="Sort by"
+            leftSection={<Clock size={16} />} aria-label={t("home_sortByAriaLabel")}
           />
         </Group>
 
@@ -347,9 +359,9 @@ function HomeInner() {
             <Stack align="center" gap={6}>
               <UsersThree size={48} weight="duotone" color="var(--mantine-color-gray-4)" />
               <Text c="dimmed" ta="center">
-                {search ? "No farmers match your search" : "No farmers yet in this village"}
+                {search ? t("home_noFarmersSearch") : t("home_noFarmersVillage")}
               </Text>
-              {!search && <Text c="dimmed" size="sm">Tap the + button to add one</Text>}
+              {!search && <Text c="dimmed" size="sm">{t("home_tapToAdd")}</Text>}
             </Stack>
           </Center>
         ) : (
@@ -364,18 +376,18 @@ function HomeInner() {
                       <StatusIcon status={status} />
                       <Box style={{ flex: 1, minWidth: 0 }}>
                         <Group gap={6} wrap="nowrap">
-                          <Text fw={600} truncate>{f.firstName} {f.lastName}</Text>
+                          <Text fw={600} truncate>{displayName(`${f.firstName} ${f.lastName}`, language)}</Text>
                           <Badge size="xs" variant="light" color={(f.farmerType || "existing") === "existing" ? "grape" : "blue"} style={{ flexShrink: 0 }}>
-                            {(f.farmerType || "existing") === "existing" ? "Existing" : "Lead"}
+                            {(f.farmerType || "existing") === "existing" ? t("home_filterExisting") : t("home_lead")}
                           </Badge>
                         </Group>
                         <Text size="sm" c="dimmed" truncate>
-                          {co ? `C/o ${co}` : f.id}
+                          {co ? t("home_coPrefix", { name: displayName(co, language) }) : f.id}
                         </Text>
                         {f.updatedAt && (
                           <Group gap={4} mt={2} wrap="nowrap" c="dimmed">
                             <Clock size={12} />
-                            <Text size="xs">Updated {timeAgo(f.updatedAt)}</Text>
+                            <Text size="xs">{t("home_updatedAgo", { time: timeAgo(f.updatedAt, t) })}</Text>
                           </Group>
                         )}
                       </Box>
@@ -394,11 +406,11 @@ function HomeInner() {
           <Button radius="xl" size="md" variant="white" color="dark" onClick={() => setScanOpen(true)}
             leftSection={<QrCode size={20} weight="bold" />}
             styles={{ root: { boxShadow: "0 8px 24px rgba(0,0,0,0.25)" } }}>
-            Scan
+            {t("home_scan")}
           </Button>
           <Button radius="xl" size="md" leftSection={<Plus size={20} weight="bold" />} onClick={() => { setScannedCode(null); setAddOpen(true); }}
             styles={{ root: { boxShadow: "0 8px 24px rgba(6,133,79,0.4)" } }}>
-            Add farmer
+            {t("home_addFarmer")}
           </Button>
         </Group>
       </Affix>
@@ -416,21 +428,20 @@ function HomeInner() {
         onCreated={(code) => { setVillage(code); syncNow().catch(() => {}); }}
       />
 
-      <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title="Clear local data">
+      <AppModal opened={clearOpen} onClose={() => setClearOpen(false)} title={t("home_clearLocalData")}>
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            This erases all farmers, farms, plots, soil samples and photos stored <b>on this device</b>.
-            The server copy is not affected. Anything not yet synced will be lost.
+            {t("home_clearDataWarning")}
           </Text>
           <TextInput
-            label="Admin password" type="password" value={clearPw} placeholder="Enter admin password"
+            label={t("home_adminPasswordLabel")} type="password" value={clearPw} placeholder={t("home_adminPasswordPlaceholder")}
             onChange={(e) => setClearPw(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === "Enter") doClear(); }} data-autofocus
           />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setClearOpen(false)}>Cancel</Button>
+            <Button variant="default" onClick={() => setClearOpen(false)}>{t("common_cancel")}</Button>
             <Button color="red" leftSection={<Trash size={16} />} onClick={doClear} loading={clearing} disabled={!clearPw}>
-              Clear everything
+              {t("home_clearEverything")}
             </Button>
           </Group>
         </Stack>

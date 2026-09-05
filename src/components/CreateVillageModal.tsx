@@ -8,8 +8,9 @@ import AppModal from "./AppModal";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
 import { getSession } from "@/lib/session";
-import { NEOPERK_STATES, DISTRICTS_BY_STATE } from "@/lib/villages";
+import { NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel } from "@/lib/villages";
 import type { CustomVillage } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 const REGION_OF: Record<string, string> = {
   "Rajasthan": "RJ", "Madhya Pradesh": "MP", "Gujarat": "GJ",
@@ -26,6 +27,7 @@ export default function CreateVillageModal({
   onClose: () => void;
   onCreated: (code: string) => void;
 }) {
+  const { t, language } = useLanguage();
   const [name, setName] = useState("");
   const [state, setState] = useState<string>("");
   const [district, setDistrict] = useState<string>("");
@@ -52,7 +54,7 @@ export default function CreateVillageModal({
 
   const save = async () => {
     if (!canSave) {
-      notifications.show({ color: "red", message: "Name, state, district and block are required" });
+      notifications.show({ color: "red", message: t("createVillage_missingFieldsToast") });
       return;
     }
     setSaving(true);
@@ -73,51 +75,51 @@ export default function CreateVillageModal({
         synced: false,
       };
       await db.villages.add(village);
-      notifications.show({ color: "green", message: `Village "${village.name}" created` });
+      notifications.show({ color: "green", message: t("createVillage_createdToast", { name: village.name }) });
       onCreated(code);
       onClose();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not create village" });
+      notifications.show({ color: "red", message: e?.message || t("createVillage_createFailedToast") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title="Create a new village">
+    <AppModal opened={opened} onClose={onClose} title={t("createVillage_title")}>
       <Stack gap="md">
-        <Text size="sm" c="dimmed">New villages you create are visible to you and the admin.</Text>
+        <Text size="sm" c="dimmed">{t("createVillage_visibilityHint")}</Text>
         <TextInput
-          label="Village name" placeholder="e.g. Rampura" value={name} required data-autofocus
+          label={t("createVillage_nameLabel")} placeholder={t("createVillage_namePlaceholder")} value={name} required data-autofocus
           onChange={(e) => setName(e.currentTarget.value)}
         />
         <Select
-          label="State" placeholder="Select state" required
-          data={NEOPERK_STATES.map((s) => ({ value: s, label: s }))}
+          label={t("scanSample_stateLabel")} placeholder={t("scanSample_statePlaceholder")} required
+          data={NEOPERK_STATES.map((s) => ({ value: s, label: stateLabel(s, language) }))}
           value={state || null}
           onChange={(v) => { setState(v || ""); setDistrict(""); }}
           comboboxProps={{ withinPortal: true }} checkIconPosition="right"
         />
         <Select
-          label="District" placeholder={state ? "Select district" : "Pick state first"} required
-          data={districts.map((d) => ({ value: d, label: d }))}
+          label={t("scanSample_districtLabel")} placeholder={state ? t("scanSample_districtPlaceholder") : t("scanSample_pickStateFirst")} required
+          data={districts.map((d) => ({ value: d, label: districtLabel(d, language) }))}
           value={district || null} onChange={(v) => setDistrict(v || "")}
           disabled={!state} searchable
           comboboxProps={{ withinPortal: true }} checkIconPosition="right"
         />
         <TextInput
-          label="Block / Tehsil" placeholder="e.g. Sarada" value={block} required
+          label={t("createVillage_blockLabel")} placeholder={t("scanSample_blockPlaceholder")} value={block} required
           onChange={(e) => setBlock(e.currentTarget.value)}
         />
         <TextInput
-          label="ID code" value={idCode}
+          label={t("createVillage_idCodeLabel")} value={idCode}
           onChange={(e) => { setIdCodeTouched(true); setIdCode(e.currentTarget.value.toUpperCase()); }}
-          description={region ? `Used in farmer IDs, e.g. ${region}-${idCode || "VLG"}-U001` : undefined}
+          description={region ? t("createVillage_idCodeDescription", { region, idCode: idCode || "VLG" }) : undefined}
         />
         <Group justify="flex-end" mt="xs">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button variant="default" onClick={onClose}>{t("common_cancel")}</Button>
           <Button onClick={save} loading={saving} disabled={!canSave} leftSection={<MapPinPlus size={18} />}>
-            Create village
+            {t("createVillage_createButton")}
           </Button>
         </Group>
       </Stack>

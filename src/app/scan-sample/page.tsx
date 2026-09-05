@@ -12,11 +12,13 @@ import {
 import { notifications } from "@mantine/notifications";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { VILLAGES, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE } from "@/lib/villages";
-import { CROPS } from "@/lib/crops";
+import { VILLAGES, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel, villageNameLabel } from "@/lib/villages";
+import { CROPS, cropLabel } from "@/lib/crops";
 import { looksLikeSoilCode, looksLikeFarmerCode } from "@/lib/qr";
 import { CROP_API_VALUE, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
 import QrScanner from "@/components/QrScanner";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { displayName } from "@/lib/transliterate";
 
 type Stage = "input" | "form" | "result";
 
@@ -39,6 +41,7 @@ interface FormState {
 
 function ScanSampleInner() {
   const router = useRouter();
+  const { t, language } = useLanguage();
   const [stage, setStage] = useState<Stage>("input");
   const [scanOpen, setScanOpen] = useState(false);
   const [manual, setManual] = useState("");
@@ -53,11 +56,11 @@ function ScanSampleInner() {
     setScanOpen(false);
     if (!code) return;
     if (looksLikeFarmerCode(code)) {
-      notifications.show({ color: "red", message: `${code} is a farmer QR — scan a soil-sample code` });
+      notifications.show({ color: "red", message: t("scanSample_farmerQrError", { code }) });
       return;
     }
     if (!looksLikeSoilCode(code)) {
-      notifications.show({ color: "red", message: `Invalid soil code: ${code} (expected e.g. RJ-AMOD-SA001)` });
+      notifications.show({ color: "red", message: t("scanSample_invalidSoilCode", { code }) });
       return;
     }
 
@@ -80,7 +83,7 @@ function ScanSampleInner() {
         crop = plots.find((p) => p.crop)?.crop || "";
       }
     } else {
-      notifications.show({ color: "yellow", message: "Sample not on this device — enter the details below" });
+      notifications.show({ color: "yellow", message: t("scanSample_notOnDevice") });
     }
 
     // If we still have no village, derive it from the code's abbreviation
@@ -146,12 +149,12 @@ function ScanSampleInner() {
       <Box style={{ background: "linear-gradient(135deg,#06854f,#013a24)", color: "#fff", paddingTop: "max(14px, env(safe-area-inset-top))", position: "sticky", top: 0, zIndex: 20 }}>
         <Container size="sm" pb="md" pt="xs">
           <Group gap="xs" wrap="nowrap">
-            <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home/")} aria-label="Back">
+            <ActionIcon variant="subtle" color="gray.0" size="lg" onClick={() => router.push("/home/")} aria-label={t("common_back")}>
               <ArrowLeft size={22} />
             </ActionIcon>
             <div>
-              <Text fw={700} fz={9} style={{ letterSpacing: 1, opacity: 0.85 }}>UNCOMPROMISED</Text>
-              <Title order={4} lh={1.1}>Scan sample</Title>
+              <Text fw={700} fz={9} style={{ letterSpacing: 1, opacity: 0.85 }}>{t("common_brand")}</Text>
+              <Title order={4} lh={1.1}>{t("scanSample_title")}</Title>
             </div>
           </Group>
         </Container>
@@ -160,17 +163,17 @@ function ScanSampleInner() {
       <Container size="sm" py="lg">
         {stage === "input" && (
           <Stack gap="md">
-            <Text c="dimmed" size="sm">Scan a soil-sample QR or type its code to submit it to the scanner system.</Text>
-            <Button size="lg" leftSection={<QrCode size={22} />} onClick={() => setScanOpen(true)}>Scan QR code</Button>
-            <Divider label="or" labelPosition="center" />
+            <Text c="dimmed" size="sm">{t("scanSample_intro")}</Text>
+            <Button size="lg" leftSection={<QrCode size={22} />} onClick={() => setScanOpen(true)}>{t("scanSample_scanQr")}</Button>
+            <Divider label={t("scanSample_or")} labelPosition="center" />
             <TextInput
-              label="Enter sample code" placeholder="e.g. RJ-AMOD-SA001" value={manual}
+              label={t("scanSample_enterCodeLabel")} placeholder={t("scanSample_enterCodePlaceholder")} value={manual}
               onChange={(e) => setManual(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); resolveCode(manual); } }}
               autoCapitalize="characters" leftSection={<Keyboard size={16} />}
             />
             <Button variant="light" leftSection={<Flask size={18} />} onClick={() => resolveCode(manual)} disabled={!manual.trim()}>
-              Look up sample
+              {t("scanSample_lookup")}
             </Button>
           </Stack>
         )}
@@ -183,20 +186,20 @@ function ScanSampleInner() {
                 <Text fw={700}>{form.code}</Text>
               </Group>
               <Text size="xs" c="dimmed">
-                {form.lat != null && form.lng != null ? `${form.lat.toFixed(6)}, ${form.lng.toFixed(6)}` : "No location on record"}
+                {form.lat != null && form.lng != null ? `${form.lat.toFixed(6)}, ${form.lng.toFixed(6)}` : t("scanSample_noLocation")}
               </Text>
             </Paper>
 
             <TextInput
-              label="Farmer (RJ code)" required withAsterisk value={form.farmerCode}
-              placeholder="e.g. RJ-UDAI-U012"
+              label={t("scanSample_farmerCodeLabel")} required withAsterisk value={form.farmerCode}
+              placeholder={t("scanSample_farmerCodePlaceholder")}
               onChange={(e) => setForm({ ...form, farmerCode: e.currentTarget.value.toUpperCase() })}
-              description={form.farmerName || undefined}
+              description={form.farmerName ? displayName(form.farmerName, language) : undefined}
             />
 
             <Select
-              label="Village" required withAsterisk placeholder="Select village"
-              data={VILLAGES.map((v) => ({ value: v.code, label: `${v.name} · ${v.state}` }))}
+              label={t("scanSample_villageLabel")} required withAsterisk placeholder={t("scanSample_villagePlaceholder")}
+              data={VILLAGES.map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} · ${stateLabel(v.state, language)}` }))}
               value={form.villageCode || null}
               onChange={(v) => {
                 const vv = v ? villageByCode(v) : undefined;
@@ -212,43 +215,42 @@ function ScanSampleInner() {
             />
 
             <Select
-              label="State" required withAsterisk placeholder="Select state"
-              data={NEOPERK_STATES.map((s) => ({ value: s, label: s }))}
+              label={t("scanSample_stateLabel")} required withAsterisk placeholder={t("scanSample_statePlaceholder")}
+              data={NEOPERK_STATES.map((s) => ({ value: s, label: stateLabel(s, language) }))}
               value={form.state || null}
               onChange={(s) => setForm({ ...form, state: s || "", district: "" })}
               comboboxProps={{ withinPortal: true }} checkIconPosition="right"
-              description="Selects the Neoperk project"
+              description={t("scanSample_stateDescription")}
             />
 
             <Group grow>
               <Select
-                label="District" required withAsterisk placeholder={form.state ? "Select district" : "Pick state first"}
-                data={districtOptions.map((d) => ({ value: d, label: d }))}
+                label={t("scanSample_districtLabel")} required withAsterisk placeholder={form.state ? t("scanSample_districtPlaceholder") : t("scanSample_pickStateFirst")}
+                data={districtOptions.map((d) => ({ value: d, label: districtLabel(d, language) }))}
                 value={form.district || null}
                 onChange={(d) => setForm({ ...form, district: d || "" })}
                 disabled={!form.state} searchable
                 comboboxProps={{ withinPortal: true }} checkIconPosition="right"
-                error={form.district && !districtValid ? "not valid for this state" : undefined}
+                error={form.district && !districtValid ? t("scanSample_districtInvalid") : undefined}
               />
-              <TextInput label="Block" required withAsterisk value={form.block}
-                placeholder="e.g. Sarada" onChange={(e) => setForm({ ...form, block: e.currentTarget.value })} />
+              <TextInput label={t("scanSample_blockLabel")} required withAsterisk value={form.block}
+                placeholder={t("scanSample_blockPlaceholder")} onChange={(e) => setForm({ ...form, block: e.currentTarget.value })} />
             </Group>
 
             <Select
-              label="Upcoming crop" required withAsterisk placeholder="Select crop"
-              data={CROPS.map((c) => ({ value: c, label: c }))}
+              label={t("scanSample_cropLabel")} required withAsterisk placeholder={t("scanSample_cropPlaceholder")}
+              data={CROPS.map((c) => ({ value: c, label: cropLabel(c, language) }))}
               value={form.crop || null}
               onChange={(v) => setForm({ ...form, crop: v || "" })}
               comboboxProps={{ withinPortal: true }} checkIconPosition="right"
-              error={form.crop && !cropApi ? "not accepted by the API" : undefined}
+              error={form.crop && !cropApi ? t("scanSample_cropInvalid") : undefined}
             />
 
-            <Textarea label="Operator note" autosize minRows={2} value={form.operatorNote}
+            <Textarea label={t("scanSample_operatorNoteLabel")} autosize minRows={2} value={form.operatorNote}
               onChange={(e) => setForm({ ...form, operatorNote: e.currentTarget.value })} />
 
             <Text size="xs" c="dimmed">
-              Mobile {FIXED.mobile_number} (fixed) · sending to <b>{form.state || "—"}</b> project
-              {form.district ? ` · ${form.district}` : ""}
+              {t("scanSample_mobileSendingTo", { mobile: FIXED.mobile_number, state: form.state ? stateLabel(form.state, language) : "—", districtSuffix: form.district ? ` · ${districtLabel(form.district, language)}` : "" })}
             </Text>
 
             {form.alreadySentId && (
@@ -256,11 +258,11 @@ function ScanSampleInner() {
                 <Group gap={8} align="flex-start" wrap="nowrap">
                   <WarningCircle size={18} weight="fill" color="var(--mantine-color-orange-6)" />
                   <div style={{ flex: 1 }}>
-                    <Text size="sm" fw={600}>Already sent to the scanner</Text>
-                    <Text size="xs" c="dimmed">Scanner sample ID <b>{form.alreadySentId}</b>. Sending again will create a duplicate record.</Text>
+                    <Text size="sm" fw={600}>{t("scanSample_alreadySentTitle")}</Text>
+                    <Text size="xs" c="dimmed">{t("scanSample_alreadySentBody", { id: form.alreadySentId })}</Text>
                     {!override && (
                       <Button size="xs" variant="light" color="orange" mt={8} onClick={() => setOverride(true)}>
-                        Send anyway
+                        {t("scanSample_sendAnyway")}
                       </Button>
                     )}
                   </div>
@@ -269,14 +271,14 @@ function ScanSampleInner() {
             )}
 
             <Button size="md" leftSection={<PaperPlaneTilt size={18} />} onClick={send} loading={sending} disabled={!canSend}>
-              Confirm & send to scanner
+              {t("scanSample_confirmSend")}
             </Button>
             {blockedAsSent ? (
-              <Text size="xs" c="dimmed" ta="center">This sample was already sent — tap “Send anyway” above to re-submit.</Text>
+              <Text size="xs" c="dimmed" ta="center">{t("scanSample_alreadySentHint")}</Text>
             ) : !canSend && (
-              <Text size="xs" c="dimmed" ta="center">Fill the required fields (farmer code, village, state, district, block, crop) to enable sending.</Text>
+              <Text size="xs" c="dimmed" ta="center">{t("scanSample_fillRequiredHint")}</Text>
             )}
-            <Button variant="subtle" color="gray" onClick={reset}>Cancel</Button>
+            <Button variant="subtle" color="gray" onClick={reset}>{t("common_cancel")}</Button>
           </Stack>
         )}
 
@@ -285,24 +287,24 @@ function ScanSampleInner() {
             <ThemeIcon size={64} radius="xl" variant="light" color={result.success ? "teal" : "red"}>
               {result.success ? <CheckCircle size={40} weight="fill" /> : <WarningCircle size={40} weight="fill" />}
             </ThemeIcon>
-            <Title order={4}>{result.success ? "Sample submitted" : "Submission failed"}</Title>
+            <Title order={4}>{result.success ? t("scanSample_submitted") : t("scanSample_submissionFailed")}</Title>
             {result.success ? (
               <Paper withBorder radius="md" p="md" w="100%" ta="center">
-                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Scanner sample ID</Text>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{t("scanSample_scannerSampleId")}</Text>
                 <Text fw={700} size="xl">{result.sample_id || "—"}</Text>
-                <Text size="xs" c="dimmed" mt={4}>Use this in the Scanner App.</Text>
+                <Text size="xs" c="dimmed" mt={4}>{t("scanSample_useInScannerApp")}</Text>
               </Paper>
             ) : (
               <Paper withBorder radius="md" p="md" w="100%">
-                <Text c="red" fw={500} size="sm">{result.message || "Could not submit."}</Text>
+                <Text c="red" fw={500} size="sm">{result.message || t("scanSample_couldNotSubmit")}</Text>
                 {result.errors?.length ? (
                   <Stack gap={2} mt={6}>{result.errors.map((e, i) => <Text key={i} size="xs" c="dimmed">• {e}</Text>)}</Stack>
                 ) : null}
               </Paper>
             )}
-            <Button fullWidth size="md" leftSection={<ArrowClockwise size={18} />} onClick={reset}>Send another sample</Button>
+            <Button fullWidth size="md" leftSection={<ArrowClockwise size={18} />} onClick={reset}>{t("scanSample_sendAnother")}</Button>
             {!result.success && (
-              <Button fullWidth variant="light" onClick={() => setStage("form")}>Back to details</Button>
+              <Button fullWidth variant="light" onClick={() => setStage("form")}>{t("scanSample_backToDetails")}</Button>
             )}
           </Stack>
         )}

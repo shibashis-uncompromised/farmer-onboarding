@@ -3,18 +3,29 @@
 // in one place so the admin edit forms (components/admin/Edit*Modal) and the
 // version-history/approvals viewers (app/admin/versions, app/admin/approvals)
 // never drift out of sync on what a raw field/value actually means.
+//
+// Labels are language-reactive: every label here is looked up from a
+// translation key at call time via a `t` function (see src/lib/i18n), rather
+// than baked in as a plain string, so this metadata renders correctly in
+// whichever language the user has selected.
 
 import type { EntityType, VersionStatus } from "./api";
+import type { TranslationKey } from "./i18n/en";
+import type { Language } from "./i18n/LanguageContext";
+import { cropLabel } from "./crops";
 
 export interface FieldOption { value: string; label: string }
+export type TFunc = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
 // Shared entity/status display metadata — one definition used by both the
 // read-only Version History page and the approve/reject queue, so their
 // badges and labels can never quietly diverge from each other.
-export const ENTITY_LABEL: Record<EntityType, string> = { farmer: "Farmer", farm: "Farm", plot: "Plot" };
+export const ENTITY_LABEL_KEY: Record<EntityType, TranslationKey> = {
+  farmer: "entity_farmer", farm: "entity_farm", plot: "entity_plot",
+};
 export const ENTITY_COLOR: Record<EntityType, string> = { farmer: "grape", farm: "blue", plot: "teal" };
-export const STATUS_LABEL: Record<VersionStatus, string> = {
-  pending: "Pending", current: "Current", rejected: "Rejected", retired: "Retired",
+export const STATUS_LABEL_KEY: Record<VersionStatus, TranslationKey> = {
+  pending: "status_pending", current: "status_current", rejected: "status_rejected", retired: "status_retired",
 };
 export const STATUS_COLOR: Record<VersionStatus, string> = {
   pending: "yellow", current: "green", rejected: "red", retired: "gray",
@@ -32,163 +43,153 @@ export function fmtVersionDate(ms: number | string | null | undefined): string {
   return new Date(n).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export const FINANCIAL_CAPACITY_OPTS: FieldOption[] = [
-  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
-];
-export const LANDHOLDING_OPTS: FieldOption[] = [
-  { value: "lt_2_5", label: "< 2.5 acres" }, { value: "between_2_5_10", label: "2.5–10 acres" }, { value: "gt_10", label: "> 10 acres" },
-];
-export const ADOPTION_LEVEL_OPTS: FieldOption[] = [
-  { value: "basic", label: "Basic" }, { value: "improved", label: "Improved" },
-  { value: "progressive", label: "Progressive" }, { value: "advanced", label: "Advanced" },
-];
-export const MOBILE_COVERAGE_OPTS: FieldOption[] = [
-  { value: "good", label: "Good" }, { value: "weak", label: "Weak" }, { value: "none", label: "None" },
-];
-export const SHAPE_OPTS: FieldOption[] = [
-  { value: "rectangle", label: "Rectangle" }, { value: "square", label: "Square" },
-  { value: "trapezoid", label: "Trapezoid" }, { value: "irregular", label: "Irregular" },
-];
-export const FARMER_FOCUS_OPTS: FieldOption[] = [
-  { value: "daily", label: "Daily" }, { value: "twice_weekly", label: "Twice a week" }, { value: "weekly_plus", label: "Weekly or less" },
-];
-export const WATER_SOURCE_OPTS: FieldOption[] = [
-  { value: "rainfed", label: "Rainfed" }, { value: "borewell", label: "Borewell" },
-  { value: "open_well", label: "Open well" }, { value: "farm_pond", label: "Farm pond" },
-  { value: "anicut_river", label: "Anicut / River" },
-];
-export const IRRIGATION_OPTS: FieldOption[] = [
-  { value: "none", label: "None" }, { value: "flood", label: "Flood" },
-  { value: "sprinkler", label: "Sprinkler" }, { value: "drip", label: "Drip" },
-];
-export const SEASON_OPTS: FieldOption[] = [
-  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" }, { value: "other", label: "Other" },
-];
-export const KNOWN_ISSUE_OPTS: FieldOption[] = [
-  { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
-  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" }, { value: "other", label: "Other" },
-];
-export const ANIMAL_PRESSURE_OPTS: FieldOption[] = [
-  { value: "nilgai", label: "Nilgai" }, { value: "boar", label: "Boar" }, { value: "monkey", label: "Monkey" },
-  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" }, { value: "other", label: "Other" },
-];
-export const ACCESSIBILITY_OPTS: FieldOption[] = [
-  { value: "tractor", label: "Tractor" }, { value: "small_machinery", label: "Small machinery" },
-  { value: "hand_tools", label: "Hand tools only" },
-];
-export const TOOL_OPTS: FieldOption[] = [
-  { value: "tractor", label: "Tractor" }, { value: "power_tiller", label: "Power tiller" },
-  { value: "pump_set", label: "Pump set" }, { value: "sprayer", label: "Sprayer" },
-  { value: "thresher", label: "Thresher" }, { value: "plough", label: "Plough" },
-  { value: "hand_tools", label: "Hand tools" }, { value: "other", label: "Other" },
-];
-export const BENCHMARK_OPTS: FieldOption[] = [
-  { value: "above", label: "Above average" }, { value: "at", label: "About average" }, { value: "below", label: "Below average" },
-];
-export const GRADIENT_OPTS: FieldOption[] = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" },
-  { value: "10_30", label: "10%–30%" }, { value: "gt_30", label: ">30%" },
-];
-export const WATERLOGGING_OPTS: FieldOption[] = [
-  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
-];
-export const SUNLIGHT_OPTS: FieldOption[] = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" }, { value: "10_30", label: "10%–30%" },
-  { value: "30_50", label: "30%–50%" }, { value: "gt_50", label: ">50%" },
-];
-export const FENCING_OPTS: FieldOption[] = [
-  { value: "none", label: "None" }, { value: "natural", label: "Natural" }, { value: "stone_pitch", label: "Stone pitch" },
-  { value: "wire_fence", label: "Wire fence" }, { value: "boundary_wall", label: "Boundary wall" },
+// Builds a `(t) => FieldOption[]` for one option category: `category` and
+// each value combine into the translation key `opt_<category>_<value>` (see
+// src/lib/i18n/en.ts). Called at render time — e.g. `waterSourceOpts(t)` —
+// so option labels stay in sync with the current language.
+function buildOpts<V extends string>(category: string, values: readonly V[]): (t: TFunc) => FieldOption[] {
+  return (t: TFunc) => values.map((value) => ({ value, label: t(`opt_${category}_${value}` as TranslationKey) }));
+}
+
+export const FINANCIAL_CAPACITY_VALUES = ["low", "medium", "high"] as const;
+export const LANDHOLDING_VALUES = ["lt_2_5", "between_2_5_10", "gt_10"] as const;
+export const ADOPTION_LEVEL_VALUES = ["basic", "improved", "progressive", "advanced"] as const;
+export const MOBILE_COVERAGE_VALUES = ["good", "weak", "none"] as const;
+export const SHAPE_VALUES = ["rectangle", "square", "trapezoid", "irregular"] as const;
+export const FARMER_FOCUS_VALUES = ["daily", "twice_weekly", "weekly_plus"] as const;
+export const WATER_SOURCE_VALUES = ["rainfed", "borewell", "open_well", "farm_pond", "anicut_river"] as const;
+export const IRRIGATION_VALUES = ["none", "flood", "sprinkler", "drip"] as const;
+export const SEASON_VALUES = ["kharif", "rabi", "zaid", "other"] as const;
+export const KNOWN_ISSUE_VALUES = ["termites", "nematodes", "frost", "flooding", "other"] as const;
+export const ANIMAL_PRESSURE_VALUES = ["nilgai", "boar", "monkey", "rabbit", "birds", "other"] as const;
+export const ACCESSIBILITY_VALUES = ["tractor", "small_machinery", "hand_tools"] as const;
+export const TOOL_VALUES = ["tractor", "power_tiller", "pump_set", "sprayer", "thresher", "plough", "hand_tools", "other"] as const;
+export const BENCHMARK_VALUES = ["above", "at", "below"] as const;
+export const GRADIENT_VALUES = ["lt_5", "5_10", "10_30", "gt_30"] as const;
+export const WATERLOGGING_VALUES = ["low", "medium", "high"] as const;
+export const SUNLIGHT_VALUES = ["lt_5", "5_10", "10_30", "30_50", "gt_50"] as const;
+export const FENCING_VALUES = ["none", "natural", "stone_pitch", "wire_fence", "boundary_wall"] as const;
+
+export const financialCapacityOpts = buildOpts("financialCapacity", FINANCIAL_CAPACITY_VALUES);
+export const landholdingOpts = buildOpts("landholding", LANDHOLDING_VALUES);
+export const adoptionLevelOpts = buildOpts("adoptionLevel", ADOPTION_LEVEL_VALUES);
+export const mobileCoverageOpts = buildOpts("mobileCoverage", MOBILE_COVERAGE_VALUES);
+export const shapeOpts = buildOpts("shapeOverride", SHAPE_VALUES);
+export const farmerFocusOpts = buildOpts("farmerFocus", FARMER_FOCUS_VALUES);
+export const waterSourceOpts = buildOpts("waterSource", WATER_SOURCE_VALUES);
+export const irrigationOpts = buildOpts("irrigationAvailable", IRRIGATION_VALUES);
+export const seasonOpts = buildOpts("seasonsPossible", SEASON_VALUES);
+export const knownIssueOpts = buildOpts("knownIssues", KNOWN_ISSUE_VALUES);
+export const animalPressureOpts = buildOpts("animalPressure", ANIMAL_PRESSURE_VALUES);
+export const accessibilityOpts = buildOpts("accessibility", ACCESSIBILITY_VALUES);
+export const toolOpts = buildOpts("toolsAvailable", TOOL_VALUES);
+export const benchmarkOpts = buildOpts("vsBenchmark", BENCHMARK_VALUES);
+export const gradientOpts = buildOpts("gradient", GRADIENT_VALUES);
+export const waterloggingOpts = buildOpts("waterloggingProbability", WATERLOGGING_VALUES);
+export const sunlightOpts = buildOpts("sunlightAvailability", SUNLIGHT_VALUES);
+export const fencingOpts = buildOpts("fencingAvailability", FENCING_VALUES);
+
+// Categories keyed the same way a raw dynamic-field's value is looked up
+// (fieldKey -> its values) — used to build OPTION_LABEL_KEYS below. Kept as
+// plain value lists (not FieldOption[]) since only the value matters here.
+const OPTION_CATEGORIES: [string, readonly string[]][] = [
+  ["financialCapacity", FINANCIAL_CAPACITY_VALUES], ["landholding", LANDHOLDING_VALUES], ["adoptionLevel", ADOPTION_LEVEL_VALUES],
+  ["mobileCoverage", MOBILE_COVERAGE_VALUES], ["shapeOverride", SHAPE_VALUES], ["farmerFocus", FARMER_FOCUS_VALUES],
+  ["waterSource", WATER_SOURCE_VALUES], ["irrigationAvailable", IRRIGATION_VALUES], ["seasonsPossible", SEASON_VALUES],
+  ["knownIssues", KNOWN_ISSUE_VALUES], ["animalPressure", ANIMAL_PRESSURE_VALUES], ["accessibility", ACCESSIBILITY_VALUES],
+  ["toolsAvailable", TOOL_VALUES], ["vsBenchmark", BENCHMARK_VALUES], ["gradient", GRADIENT_VALUES],
+  ["waterloggingProbability", WATERLOGGING_VALUES], ["sunlightAvailability", SUNLIGHT_VALUES], ["fencingAvailability", FENCING_VALUES],
 ];
 
-// Human label for each raw dynamic-field key (as it appears in a version's
-// `data` snapshot / the merged farmer/farm/plot object).
-export const FIELD_LABELS: Record<string, string> = {
-  seeds: "Seed packages",
-  financialCapacity: "Financial capacity",
-  landholding: "Landholding",
-  adoptionLevel: "Adoption level",
-  treeCountBig: "Big trees",
-  treeCountSmall: "Small trees",
-  mobileCoverage: "Mobile coverage",
-  shapeOverride: "Farm shape",
-  plotSizeSqFtOverride: "Plot size override (sq ft)",
-  plotSizeHectOverride: "Plot size override (hectares, legacy)",
-  farmerFocus: "Farmer's visit frequency",
-  waterSource: "Water source",
-  irrigationAvailable: "Irrigation available",
-  seasonsPossible: "Seasons possible",
-  seasonsPossibleOther: "Seasons — other",
-  knownIssues: "Known issues",
-  knownIssuesOther: "Known issues — other",
-  previousCrop: "Previous crop",
-  previousCropProduction: "Previous crop production",
-  animalPressure: "Animal pressure",
-  animalPressureOther: "Animal pressure — other",
-  accessibility: "Accessibility",
-  toolsAvailable: "Tools available",
-  toolsAvailableOther: "Tools — other",
-  gradient: "Gradient",
-  waterloggingProbability: "Waterlogging probability",
-  sunlightAvailability: "Sunlight availability",
-  fencingAvailability: "Fencing availability",
-  crop: "Crop",
-  sowingDate: "Sowing date",
-};
-
-const VALUE_LABELS: Record<string, Record<string, string>> = Object.fromEntries(
-  (
-    [
-      ["financialCapacity", FINANCIAL_CAPACITY_OPTS], ["landholding", LANDHOLDING_OPTS], ["adoptionLevel", ADOPTION_LEVEL_OPTS],
-      ["mobileCoverage", MOBILE_COVERAGE_OPTS], ["shapeOverride", SHAPE_OPTS], ["farmerFocus", FARMER_FOCUS_OPTS],
-      ["waterSource", WATER_SOURCE_OPTS], ["irrigationAvailable", IRRIGATION_OPTS], ["seasonsPossible", SEASON_OPTS],
-      ["knownIssues", KNOWN_ISSUE_OPTS], ["animalPressure", ANIMAL_PRESSURE_OPTS], ["accessibility", ACCESSIBILITY_OPTS],
-      ["toolsAvailable", TOOL_OPTS], ["vsBenchmark", BENCHMARK_OPTS], ["gradient", GRADIENT_OPTS],
-      ["waterloggingProbability", WATERLOGGING_OPTS], ["sunlightAvailability", SUNLIGHT_OPTS], ["fencingAvailability", FENCING_OPTS],
-    ] as [string, FieldOption[]][]
-  ).map(([key, opts]) => [key, Object.fromEntries(opts.map((o) => [o.value, o.label]))])
+// fieldKey -> raw value -> translation key for that value's label.
+const OPTION_LABEL_KEYS: Record<string, Record<string, TranslationKey>> = Object.fromEntries(
+  OPTION_CATEGORIES.map(([category, values]) => [
+    category,
+    Object.fromEntries(values.map((v) => [v, `opt_${category}_${v}` as TranslationKey])),
+  ])
 );
+
+// Translation key for each raw dynamic-field key (as it appears in a
+// version's `data` snapshot / the merged farmer/farm/plot object).
+export const FIELD_LABEL_KEYS: Record<string, TranslationKey> = {
+  seeds: "field_seeds",
+  financialCapacity: "field_financialCapacity",
+  landholding: "field_landholding",
+  adoptionLevel: "field_adoptionLevel",
+  treeCountBig: "field_treeCountBig",
+  treeCountSmall: "field_treeCountSmall",
+  mobileCoverage: "field_mobileCoverage",
+  shapeOverride: "field_shapeOverride",
+  plotSizeSqFtOverride: "field_plotSizeSqFtOverride",
+  plotSizeHectOverride: "field_plotSizeHectOverride",
+  farmerFocus: "field_farmerFocus",
+  waterSource: "field_waterSource",
+  irrigationAvailable: "field_irrigationAvailable",
+  seasonsPossible: "field_seasonsPossible",
+  seasonsPossibleOther: "field_seasonsPossibleOther",
+  knownIssues: "field_knownIssues",
+  knownIssuesOther: "field_knownIssuesOther",
+  previousCrop: "field_previousCrop",
+  previousCropProduction: "field_previousCropProduction",
+  animalPressure: "field_animalPressure",
+  animalPressureOther: "field_animalPressureOther",
+  accessibility: "field_accessibility",
+  toolsAvailable: "field_toolsAvailable",
+  toolsAvailableOther: "field_toolsAvailableOther",
+  gradient: "field_gradient",
+  waterloggingProbability: "field_waterloggingProbability",
+  sunlightAvailability: "field_sunlightAvailability",
+  fencingAvailability: "field_fencingAvailability",
+  crop: "field_crop",
+  sowingDate: "field_sowingDate",
+};
 
 function humanize(key: string): string {
   return key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 }
 
-export function fieldLabel(key: string): string {
-  return FIELD_LABELS[key] || humanize(key);
+export function fieldLabel(key: string, t: TFunc): string {
+  const tk = FIELD_LABEL_KEYS[key];
+  return tk ? t(tk) : humanize(key);
 }
 
-function valueLabel(fieldKey: string, raw: string): string {
-  return VALUE_LABELS[fieldKey]?.[raw] || raw;
+function valueLabel(fieldKey: string, raw: string, t: TFunc, language: Language = "en"): string {
+  // "crop"/"previousCrop" are static entity data (closed crop vocabulary,
+  // shared with the onboarding crop pickers) — translated via cropLabel(),
+  // not the OPTION_LABEL_KEYS enum-option mechanism used by everything else.
+  if (fieldKey === "crop" || fieldKey === "previousCrop") return cropLabel(raw, language);
+  const tk = OPTION_LABEL_KEYS[fieldKey]?.[raw];
+  return tk ? t(tk) : raw;
 }
 
 // Renders one dynamic-field's value as plain, human-readable text — used by
 // both the compact "what changed" table preview and the full version
 // snapshot view, so a reviewer never has to decode a raw enum code or JSON.
-export function formatFieldValue(key: string, value: unknown): string {
+export function formatFieldValue(key: string, value: unknown, t: TFunc, language: Language = "en"): string {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) {
     if (value.length === 0) return "—";
     if (key === "seeds") {
       return (value as { seed: string; qty: number }[]).map((s) => `${s.seed} ×${s.qty}`).join(", ");
     }
-    return value.map((v) => valueLabel(key, String(v))).join(", ");
+    return value.map((v) => valueLabel(key, String(v), t, language)).join(", ");
   }
   if (typeof value === "object") {
     if (key === "previousCropProduction") {
       const v = value as { quintals?: number | null; vsBenchmark?: string | null };
       const parts: string[] = [];
-      if (v.quintals !== null && v.quintals !== undefined) parts.push(`${v.quintals} quintals`);
-      if (v.vsBenchmark) parts.push(valueLabel("vsBenchmark", v.vsBenchmark));
+      if (v.quintals !== null && v.quintals !== undefined) parts.push(`${v.quintals} ${t("unit_quintals")}`);
+      if (v.vsBenchmark) parts.push(valueLabel("vsBenchmark", v.vsBenchmark, t));
       return parts.length ? parts.join(", ") : "—";
     }
     return JSON.stringify(value);
   }
-  return valueLabel(key, String(value));
+  return valueLabel(key, String(value), t, language);
 }
 
 // Non-empty [key, value] pairs from a dynamic-field snapshot, in a stable
 // display order (falls back to insertion order for keys not listed here).
-const DISPLAY_ORDER = Object.keys(FIELD_LABELS);
+const DISPLAY_ORDER = Object.keys(FIELD_LABEL_KEYS);
 export function dynamicFieldRows(data: Record<string, unknown> | null | undefined): [string, unknown][] {
   const entries = Object.entries(data || {}).filter(([, v]) => {
     if (v === null || v === undefined || v === "") return false;

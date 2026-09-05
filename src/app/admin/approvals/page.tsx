@@ -15,8 +15,9 @@ import {
 import { getSession } from "@/lib/session";
 import {
   diffDynamicFields, dynamicFieldRows, fieldLabel, formatFieldValue,
-  ENTITY_LABEL, ENTITY_COLOR, fmtVersionDate as fmtDate,
+  ENTITY_LABEL_KEY, ENTITY_COLOR, fmtVersionDate as fmtDate,
 } from "@/lib/dynamicFieldMeta";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 // The action counterpart to /admin/versions (which is read-only): every
 // still-`pending` dynamic-field submission across farmers, farms and plots,
@@ -27,6 +28,7 @@ import {
 const PAGE_SIZE = 20;
 
 export default function AdminApprovalsPage() {
+  const { t, language } = useLanguage();
   const [versions, setVersions] = useState<EntityVersion[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
@@ -53,7 +55,7 @@ export default function AdminApprovalsPage() {
     const session = getSession();
     if (!session) return;
     let cancelled = false;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setError("");
       try {
         const { versions, total } = await apiListEntityVersions(session.token, {
@@ -69,10 +71,10 @@ export default function AdminApprovalsPage() {
         setTotal(total);
       } catch (e: any) {
         if (cancelled) return;
-        setError(e?.message || "Could not load pending submissions");
+        setError(e?.message || t("adminApprovals_couldNotLoad"));
       }
     }, 300); // light debounce so typing in the search fields doesn't fire a request per keystroke
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [entityType, entityId, submittedBy, page, reloadTick]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -90,13 +92,13 @@ export default function AdminApprovalsPage() {
       else await apiRejectEntityVersion(session.token, reviewing.id, note.trim() || undefined);
       notifications.show({
         color: kind === "approve" ? "green" : "red",
-        message: `${ENTITY_LABEL[reviewing.entity_type]} ${reviewing.entity_id} v${reviewing.version_no} ${kind === "approve" ? "approved" : "rejected"}`,
+        message: `${t(ENTITY_LABEL_KEY[reviewing.entity_type])} ${reviewing.entity_id} v${reviewing.version_no} ${kind === "approve" ? t("adminApprovals_approvedWord") : t("adminApprovals_rejectedWord")}`,
       });
       setReviewing(null);
       setNote("");
       setReloadTick((n) => n + 1);
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || `Could not ${kind} this submission` });
+      notifications.show({ color: "red", message: e?.message || (kind === "approve" ? t("adminApprovals_couldNotApprove") : t("adminApprovals_couldNotReject")) });
     } finally {
       setActing(null);
     }
@@ -114,18 +116,18 @@ export default function AdminApprovalsPage() {
         note: approveAllNote.trim() || undefined,
       });
       if (result.failed.length === 0) {
-        notifications.show({ color: "green", message: `Approved ${result.approved} submission${result.approved === 1 ? "" : "s"}` });
+        notifications.show({ color: "green", message: t("adminApprovals_approvedCountToast", { n: result.approved }) });
       } else {
         notifications.show({
           color: "yellow",
-          message: `Approved ${result.approved} of ${result.total} — ${result.failed.length} failed (someone may have just reviewed them)`,
+          message: t("adminApprovals_approvedPartialToast", { approved: result.approved, total: result.total, failed: result.failed.length }),
         });
       }
       setApproveAllOpen(false);
       setApproveAllNote("");
       setReloadTick((n) => n + 1);
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not approve all submissions" });
+      notifications.show({ color: "red", message: e?.message || t("adminApprovals_couldNotApproveAll") });
     } finally {
       setApprovingAll(false);
     }
@@ -135,10 +137,9 @@ export default function AdminApprovalsPage() {
     <Stack gap="lg">
       <Group justify="space-between" align="flex-start" wrap="wrap">
         <div>
-          <Title order={3}>Approvals</Title>
+          <Title order={3}>{t("adminApprovals_title")}</Title>
           <Text c="dimmed" size="sm">
-            Field submissions from POCs waiting on review. Approving replaces the entity&apos;s current
-            values; rejecting leaves them untouched and keeps the submission on record as rejected.
+            {t("adminApprovals_subtitle")}
           </Text>
         </div>
         <Button
@@ -146,30 +147,30 @@ export default function AdminApprovalsPage() {
           disabled={!versions || versions.length === 0}
           onClick={() => setApproveAllOpen(true)}
         >
-          Approve all{total > 0 ? ` (${total})` : ""}
+          {t("adminApprovals_approveAll")}{total > 0 ? ` (${total})` : ""}
         </Button>
       </Group>
 
       <Group wrap="wrap" gap="sm" align="flex-end">
         <Select
-          label="Entity type" value={entityType} onChange={(v) => onEntityType((v as EntityType | "all") || "all")}
+          label={t("adminVersions_entityTypeLabel")} value={entityType} onChange={(v) => onEntityType((v as EntityType | "all") || "all")}
           data={[
-            { value: "all", label: "All types" },
-            { value: "farmer", label: "Farmer" },
-            { value: "farm", label: "Farm" },
-            { value: "plot", label: "Plot" },
+            { value: "all", label: t("adminVersions_allTypes") },
+            { value: "farmer", label: t(ENTITY_LABEL_KEY.farmer) },
+            { value: "farm", label: t(ENTITY_LABEL_KEY.farm) },
+            { value: "plot", label: t(ENTITY_LABEL_KEY.plot) },
           ]}
           allowDeselect={false}
           w={140}
         />
         <TextInput
-          label="Entity ID" placeholder="e.g. RJ001U001"
+          label={t("adminVersions_entityIdLabel")} placeholder={t("adminVersions_entityIdPlaceholder")}
           leftSection={<MagnifyingGlass size={14} />}
           value={entityId} onChange={(e) => onEntityId(e.currentTarget.value)}
           w={170}
         />
         <TextInput
-          label="Submitted by" placeholder="username"
+          label={t("adminVersions_submittedByLabel")} placeholder={t("adminVersions_usernamePlaceholder")}
           value={submittedBy} onChange={(e) => onSubmittedBy(e.currentTarget.value)}
           w={150}
         />
@@ -191,7 +192,7 @@ export default function AdminApprovalsPage() {
           <Center p="xl">
             <Stack align="center" gap={6}>
               <ClipboardText size={28} color="var(--mantine-color-gray-5)" />
-              <Text c="dimmed" size="sm">Nothing waiting on review right now</Text>
+              <Text c="dimmed" size="sm">{t("adminApprovals_nothingPending")}</Text>
             </Stack>
           </Center>
         )}
@@ -200,10 +201,10 @@ export default function AdminApprovalsPage() {
             <Table verticalSpacing="sm" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Entity</Table.Th>
-                  <Table.Th>Version</Table.Th>
-                  <Table.Th>What changed</Table.Th>
-                  <Table.Th>Submitted</Table.Th>
+                  <Table.Th>{t("adminVersions_colEntity")}</Table.Th>
+                  <Table.Th>{t("adminVersions_colVersion")}</Table.Th>
+                  <Table.Th>{t("adminVersions_colWhatChanged")}</Table.Th>
+                  <Table.Th>{t("adminVersions_colSubmitted")}</Table.Th>
                   <Table.Th w={170} />
                 </Table.Tr>
               </Table.Thead>
@@ -211,14 +212,14 @@ export default function AdminApprovalsPage() {
                 {versions.map((v) => {
                   const diff = diffDynamicFields(v.data, v.previous_data);
                   const summary = diff.length === 0
-                    ? (v.version_no === 1 ? "—" : "No changes recorded")
-                    : diff.map(({ key, after }) => `${fieldLabel(key)}: ${formatFieldValue(key, after)}`).join(" · ");
+                    ? (v.version_no === 1 ? "—" : t("adminVersions_summaryNoChanges"))
+                    : diff.map(({ key, after }) => `${fieldLabel(key, t)}: ${formatFieldValue(key, after, t, language)}`).join(" · ");
                   return (
                     <Table.Tr key={v.id}>
                       <Table.Td>
                         <Group gap={6} wrap="nowrap">
                           <Badge color={ENTITY_COLOR[v.entity_type]} variant="light" radius="sm">
-                            {ENTITY_LABEL[v.entity_type]}
+                            {t(ENTITY_LABEL_KEY[v.entity_type])}
                           </Badge>
                           <Text size="sm" fw={500}>{v.entity_id}</Text>
                         </Group>
@@ -233,13 +234,13 @@ export default function AdminApprovalsPage() {
                       </Table.Td>
                       <Table.Td>
                         <Group gap={6} wrap="nowrap" justify="flex-end">
-                          <Tooltip label="Review">
+                          <Tooltip label={t("adminApprovals_review")}>
                             <ActionIcon variant="subtle" color="gray" onClick={() => openReview(v)}>
                               <Eye size={16} />
                             </ActionIcon>
                           </Tooltip>
                           <Button size="xs" color="green" variant="light" leftSection={<CheckCircle size={14} />} onClick={() => openReview(v)}>
-                            Review
+                            {t("adminApprovals_review")}
                           </Button>
                         </Group>
                       </Table.Td>
@@ -259,7 +260,7 @@ export default function AdminApprovalsPage() {
 
       <AppModal
         opened={!!reviewing} onClose={closeReview}
-        title={reviewing ? `${ENTITY_LABEL[reviewing.entity_type]} ${reviewing.entity_id} — v${reviewing.version_no}` : "Review submission"}
+        title={reviewing ? `${t(ENTITY_LABEL_KEY[reviewing.entity_type])} ${reviewing.entity_id} — v${reviewing.version_no}` : t("adminApprovals_reviewSubmissionTitle")}
         size="md"
         closeOnClickOutside={!acting}
         withCloseButton={!acting}
@@ -267,17 +268,17 @@ export default function AdminApprovalsPage() {
         {reviewing && (
           <Stack gap="md">
             <Text size="sm">
-              Submitted by <Text span fw={600}>{reviewing.submitted_by || "—"}</Text>
+              {t("adminVersions_submittedByPrefix")}: <Text span fw={600}>{reviewing.submitted_by || "—"}</Text>
               <Text span c="dimmed"> · {fmtDate(reviewing.submitted_at)}</Text>
             </Text>
 
-            <Divider label={reviewing.version_no === 1 ? "Initial values" : "What changed from the current version"} labelPosition="left" />
+            <Divider label={reviewing.version_no === 1 ? t("adminVersions_initialValues") : t("adminApprovals_whatChangedFromCurrent")} labelPosition="left" />
             {(() => {
               const diff = diffDynamicFields(reviewing.data, reviewing.previous_data);
               if (diff.length === 0) {
                 return (
                   <Text size="sm" c="dimmed">
-                    {reviewing.version_no === 1 ? "No dynamic fields were recorded for this version." : "No changes recorded relative to the current version."}
+                    {reviewing.version_no === 1 ? t("adminVersions_noFieldsThisVersion") : t("adminApprovals_noChangesFromCurrent")}
                   </Text>
                 );
               }
@@ -285,12 +286,12 @@ export default function AdminApprovalsPage() {
                 <Table verticalSpacing={8} withRowBorders={false}>
                   <Table.Tbody>
                     {diff.map(({ key, before, after }) => {
-                      const afterText = formatFieldValue(key, after);
-                      const beforeText = formatFieldValue(key, before);
+                      const afterText = formatFieldValue(key, after, t, language);
+                      const beforeText = formatFieldValue(key, before, t, language);
                       return (
                         <Table.Tr key={key}>
                           <Table.Td w="38%" style={{ verticalAlign: "top" }}>
-                            <Text size="sm" c="dimmed">{fieldLabel(key)}</Text>
+                            <Text size="sm" c="dimmed">{fieldLabel(key, t)}</Text>
                           </Table.Td>
                           <Table.Td>
                             {beforeText === "—" ? (
@@ -298,7 +299,7 @@ export default function AdminApprovalsPage() {
                             ) : afterText === "—" ? (
                               <Group gap={6} wrap="nowrap">
                                 <Text size="sm" td="line-through" c="dimmed">{beforeText}</Text>
-                                <Badge size="xs" color="red" variant="light">cleared</Badge>
+                                <Badge size="xs" color="red" variant="light">{t("adminVersions_clearedText")}</Badge>
                               </Group>
                             ) : (
                               <Group gap={6} wrap="wrap">
@@ -316,19 +317,19 @@ export default function AdminApprovalsPage() {
               );
             })()}
 
-            <Divider label="Full snapshot in this submission" labelPosition="left" />
+            <Divider label={t("adminApprovals_fullSnapshotInSubmission")} labelPosition="left" />
             {dynamicFieldRows(reviewing.data).length === 0 ? (
-              <Text size="sm" c="dimmed">No dynamic fields recorded.</Text>
+              <Text size="sm" c="dimmed">{t("adminVersions_noFieldsRecorded")}</Text>
             ) : (
               <Table verticalSpacing={6} withRowBorders={false}>
                 <Table.Tbody>
                   {dynamicFieldRows(reviewing.data).map(([k, v]) => (
                     <Table.Tr key={k}>
                       <Table.Td w="42%" style={{ verticalAlign: "top" }}>
-                        <Text size="sm" c="dimmed">{fieldLabel(k)}</Text>
+                        <Text size="sm" c="dimmed">{fieldLabel(k, t)}</Text>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm" fw={500}>{formatFieldValue(k, v)}</Text>
+                        <Text size="sm" fw={500}>{formatFieldValue(k, v, t, language)}</Text>
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -337,8 +338,8 @@ export default function AdminApprovalsPage() {
             )}
 
             <Textarea
-              label="Review note (optional)"
-              placeholder="Visible on the version history audit trail"
+              label={t("adminApprovals_reviewNoteLabel")}
+              placeholder={t("adminApprovals_reviewNotePlaceholder")}
               value={note}
               onChange={(e) => setNote(e.currentTarget.value)}
               autosize minRows={2} maxRows={4}
@@ -351,14 +352,14 @@ export default function AdminApprovalsPage() {
                 loading={acting === "reject"} disabled={acting === "approve"}
                 onClick={() => act("reject")}
               >
-                Reject
+                {t("adminApprovals_rejectButton")}
               </Button>
               <Button
                 color="green" leftSection={<CheckCircle size={16} />}
                 loading={acting === "approve"} disabled={acting === "reject"}
                 onClick={() => act("approve")}
               >
-                Approve
+                {t("adminApprovals_approveButton")}
               </Button>
             </Group>
           </Stack>
@@ -368,20 +369,18 @@ export default function AdminApprovalsPage() {
       <AppModal
         opened={approveAllOpen}
         onClose={() => { if (!approvingAll) { setApproveAllOpen(false); setApproveAllNote(""); } }}
-        title="Approve all matching submissions"
+        title={t("adminApprovals_approveAllModalTitle")}
         size="sm"
         closeOnClickOutside={!approvingAll}
         withCloseButton={!approvingAll}
       >
         <Stack gap="md">
           <Text size="sm">
-            This approves <Text span fw={600}>{total}</Text> pending submission{total === 1 ? "" : "s"} matching the
-            current filters — each becomes the entity&apos;s current version, retiring whatever was current before it.
-            This can&apos;t be undone from here.
+            {t("adminApprovals_approveAllConfirmText", { n: total })}
           </Text>
           <Textarea
-            label="Review note (optional)"
-            placeholder="Applied to every submission approved in this batch"
+            label={t("adminApprovals_reviewNoteLabel")}
+            placeholder={t("adminApprovals_approveAllNotePlaceholder")}
             value={approveAllNote}
             onChange={(e) => setApproveAllNote(e.currentTarget.value)}
             autosize minRows={2} maxRows={4}
@@ -389,10 +388,10 @@ export default function AdminApprovalsPage() {
           />
           <Group justify="flex-end" gap="sm">
             <Button variant="default" disabled={approvingAll} onClick={() => { setApproveAllOpen(false); setApproveAllNote(""); }}>
-              Cancel
+              {t("common_cancel")}
             </Button>
             <Button color="green" leftSection={<Checks size={16} />} loading={approvingAll} onClick={runApproveAll}>
-              Approve all
+              {t("adminApprovals_approveAll")}
             </Button>
           </Group>
         </Stack>
