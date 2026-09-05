@@ -44,6 +44,11 @@ let refilling = false;
 export async function ensureIdHeadroom(threshold = 20): Promise<void> {
   const s = getSession();
   if (!s || refilling) return;
+  // Admins don't do offline farmer onboarding (same reason login() skips
+  // claiming them a block) — without this guard, an admin now landing on the
+  // Home page would have this background tick silently claim a whole ID
+  // block for them every session, purely because their capacity starts at 0.
+  if (s.role === "admin") return;
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   if (capacity(s.blocks) - s.used > threshold) return;   // plenty left
   refilling = true;

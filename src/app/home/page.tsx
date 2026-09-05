@@ -9,7 +9,7 @@ import {
 import {
   MagnifyingGlass, Plus, DotsThreeVertical, DownloadSimple, SignOut,
   CaretRight, UsersThree, MapPin, MapPinPlus, CloudArrowUp, ArrowsClockwise, CloudCheck, CloudSlash, WarningCircle,
-  QrCode, Trash, Flask, Clock,
+  QrCode, Trash, Flask, Clock, ShieldCheck,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -255,6 +255,14 @@ function HomeInner() {
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
+                {user.role === "admin" && (
+                  <>
+                    <Menu.Item leftSection={<ShieldCheck size={16} />} onClick={() => router.push("/admin/")}>
+                      Admin view
+                    </Menu.Item>
+                    <Menu.Divider />
+                  </>
+                )}
                 <Menu.Item leftSection={<Flask size={16} />} onClick={() => router.push("/scan-sample/")}>
                   Scan sample
                 </Menu.Item>

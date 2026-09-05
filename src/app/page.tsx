@@ -9,8 +9,9 @@ export default function Index() {
   const router = useRouter();
   useEffect(() => {
     const user = currentUser();
+    // Admins land on the same onboarding Home as everyone else — Home has an
+    // "Admin view" option in its menu for whoever wants the admin panel.
     if (!user) router.replace("/login/");
-    else if (user.role === "admin") router.replace("/admin/users/");
     else router.replace("/home/");
   }, [router]);
   return (

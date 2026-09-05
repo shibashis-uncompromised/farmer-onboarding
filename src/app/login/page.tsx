@@ -20,11 +20,12 @@ export default function LoginPage() {
     setErr("");
     setLoading(true);
     try {
-      const user = await login(username, password);
-      // Go straight to the right landing page — do NOT wait on a sync here, or
-      // slow internet would block the login transition. SessionGate runs the
-      // first sync in the background once home mounts.
-      router.replace(user.role === "admin" ? "/admin/users/" : "/home/");
+      await login(username, password);
+      // Go straight to Home — do NOT wait on a sync here, or slow internet
+      // would block the login transition. SessionGate runs the first sync in
+      // the background once home mounts. Admins land here too, same as
+      // everyone else; Home's menu has an "Admin view" option for them.
+      router.replace("/home/");
     } catch (err: any) {
       const offline = typeof navigator !== "undefined" && !navigator.onLine;
       setErr(offline ? "You're offline — first sign-in needs internet." : (err?.message || "Login failed"));
