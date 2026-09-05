@@ -7,20 +7,8 @@ import AppModal from "@/components/AppModal";
 import SeedsInput from "@/components/SeedsInput";
 import { apiDirectUpdateEntityVersion } from "@/lib/api";
 import { getSession } from "@/lib/session";
+import { FINANCIAL_CAPACITY_OPTS, LANDHOLDING_OPTS, ADOPTION_LEVEL_OPTS } from "@/lib/dynamicFieldMeta";
 import type { Farmer, FinancialCapacity, Landholding, AdoptionLevel, SeedPackage } from "@/lib/types";
-
-// Same option lists as the field app's BioStep, kept in sync by hand since
-// this is a separate (admin-only) editor for the same dynamic fields.
-const FINANCIAL_CAPACITY_OPTS = [
-  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
-];
-const LANDHOLDING_OPTS = [
-  { value: "lt_2_5", label: "< 2.5 acres" }, { value: "between_2_5_10", label: "2.5–10 acres" }, { value: "gt_10", label: "> 10 acres" },
-];
-const ADOPTION_LEVEL_OPTS = [
-  { value: "basic", label: "Basic" }, { value: "improved", label: "Improved" },
-  { value: "progressive", label: "Progressive" }, { value: "advanced", label: "Advanced" },
-];
 
 interface Props {
   farmer: Farmer | null;

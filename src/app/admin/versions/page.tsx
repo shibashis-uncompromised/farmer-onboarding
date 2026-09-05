@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Center, Group, Loader, Pagination, Paper, ScrollArea,
+  ActionIcon, Badge, Center, Divider, Group, Loader, Pagination, Paper, ScrollArea,
   Select, Stack, Table, Text, TextInput, Title, Tooltip,
 } from "@mantine/core";
 import { ClockCounterClockwise, Eye, MagnifyingGlass, WarningCircle } from "@phosphor-icons/react";
@@ -11,6 +11,7 @@ import {
   apiListEntityVersions, type EntityVersion, type EntityType, type VersionStatus,
 } from "@/lib/api";
 import { getSession } from "@/lib/session";
+import { dynamicFieldRows, fieldLabel, formatFieldValue } from "@/lib/dynamicFieldMeta";
 
 // Read-only history of every dynamic-field version across farmers, farms and
 // plots. There is no edit/approve/reject action here on purpose — this page
@@ -27,20 +28,26 @@ const ENTITY_COLOR: Record<EntityType, string> = { farmer: "grape", farm: "blue"
 
 const PAGE_SIZE = 20;
 
-function fmtDate(ms: number | null) {
-  if (!ms) return "—";
-  return new Date(ms).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+// submitted_at/reviewed_at are BIGINT columns in Postgres, which node-postgres
+// returns as strings (not numbers) — new Date("1756...") tries to parse that
+// as a date STRING and fails ("Invalid Date"), rather than treating it as an
+// epoch. Coerce defensively, same fix already used for soil_samples elsewhere
+// in this app's backend.
+function fmtDate(ms: number | string | null | undefined) {
+  if (ms === null || ms === undefined || ms === "") return "—";
+  const n = typeof ms === "number" ? ms : Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return new Date(n).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Compact one-line preview of a version's dynamic-field snapshot for the
-// table row; the full JSON is available via the "view" action.
+// table row, using real field/value labels — the full breakdown is available
+// via the "view" action.
 function summarize(data: Record<string, any>) {
-  const entries = Object.entries(data || {}).filter(([, v]) => v !== null && v !== undefined && v !== "");
-  if (entries.length === 0) return "—";
-  const text = entries
-    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join("/") : typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-    .join(", ");
-  return text.length > 80 ? text.slice(0, 80) + "…" : text;
+  const rows = dynamicFieldRows(data);
+  if (rows.length === 0) return "—";
+  const text = rows.map(([k, v]) => `${fieldLabel(k)}: ${formatFieldValue(k, v)}`).join(" · ");
+  return text.length > 90 ? text.slice(0, 90) + "…" : text;
 }
 
 export default function AdminVersionsPage() {
@@ -233,27 +240,59 @@ export default function AdminVersionsPage() {
         )}
       </Paper>
 
-      <AppModal opened={!!detail} onClose={() => setDetail(null)} title="Version snapshot" size="md">
+      <AppModal
+        opened={!!detail} onClose={() => setDetail(null)}
+        title={detail ? `${ENTITY_LABEL[detail.entity_type]} ${detail.entity_id}` : "Version snapshot"}
+        size="md"
+      >
         {detail && (
-          <Stack gap="sm">
-            <Group gap={6}>
-              <Badge color={ENTITY_COLOR[detail.entity_type]} variant="light">{ENTITY_LABEL[detail.entity_type]}</Badge>
-              <Text fw={600}>{detail.entity_id}</Text>
-              <Badge color={STATUS_COLOR[detail.status]} variant="light">{STATUS_LABEL[detail.status]}</Badge>
-              <Text c="dimmed" size="sm">v{detail.version_no}</Text>
+          <Stack gap="md">
+            <Group gap={8} wrap="wrap">
+              <Badge color={ENTITY_COLOR[detail.entity_type]} variant="light" radius="sm">{ENTITY_LABEL[detail.entity_type]}</Badge>
+              <Badge color={STATUS_COLOR[detail.status]} variant="light" radius="sm">{STATUS_LABEL[detail.status]}</Badge>
+              <Badge color="gray" variant="outline" radius="sm">Version {detail.version_no}</Badge>
             </Group>
-            <Text size="sm" c="dimmed">
-              Submitted by {detail.submitted_by || "—"} on {fmtDate(detail.submitted_at)}
-              {detail.reviewed_by && <> · Reviewed by {detail.reviewed_by} on {fmtDate(detail.reviewed_at)}</>}
-            </Text>
-            {detail.review_note && <Text size="sm"><b>Note:</b> {detail.review_note}</Text>}
-            <ScrollArea.Autosize mah={320}>
-              <Paper withBorder radius="md" p="sm" bg="var(--mantine-color-gray-0)">
-                <Text component="pre" size="xs" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-                  {JSON.stringify(detail.data, null, 2)}
+
+            <Stack gap={2}>
+              <Text size="sm">
+                Submitted by <Text span fw={600}>{detail.submitted_by || "—"}</Text>
+                <Text span c="dimmed"> · {fmtDate(detail.submitted_at)}</Text>
+              </Text>
+              {detail.reviewed_by && (
+                <Text size="sm">
+                  Reviewed by <Text span fw={600}>{detail.reviewed_by}</Text>
+                  <Text span c="dimmed"> · {fmtDate(detail.reviewed_at)}</Text>
                 </Text>
+              )}
+            </Stack>
+
+            {detail.review_note && (
+              <Paper withBorder radius="md" p="sm" bg="var(--mantine-color-yellow-0)">
+                <Text size="sm"><Text span fw={600}>Review note: </Text>{detail.review_note}</Text>
               </Paper>
-            </ScrollArea.Autosize>
+            )}
+
+            <Divider label="What was submitted" labelPosition="left" />
+            {dynamicFieldRows(detail.data).length === 0 ? (
+              <Text size="sm" c="dimmed">No dynamic fields were recorded for this version.</Text>
+            ) : (
+              <ScrollArea.Autosize mah={360}>
+                <Table verticalSpacing={8} withRowBorders={false}>
+                  <Table.Tbody>
+                    {dynamicFieldRows(detail.data).map(([k, v]) => (
+                      <Table.Tr key={k}>
+                        <Table.Td w="42%" style={{ verticalAlign: "top" }}>
+                          <Text size="sm" c="dimmed">{fieldLabel(k)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" fw={500}>{formatFieldValue(k, v)}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </ScrollArea.Autosize>
+            )}
           </Stack>
         )}
       </AppModal>

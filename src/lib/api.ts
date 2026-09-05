@@ -120,9 +120,11 @@ export interface EntityVersion {
   status: VersionStatus;
   data: Record<string, any>;
   submitted_by: string | null;
-  submitted_at: number | null;
+  // BIGINT columns come back from the pg driver as strings, not numbers —
+  // callers should coerce with Number(...) before treating these as epoch ms.
+  submitted_at: number | string | null;
   reviewed_by: string | null;
-  reviewed_at: number | null;
+  reviewed_at: number | string | null;
   review_note: string | null;
   created_at: string;
   updated_at: string;

@@ -9,68 +9,16 @@ import AppModal from "@/components/AppModal";
 import { apiDirectUpdateEntityVersion } from "@/lib/api";
 import { getSession } from "@/lib/session";
 import { PREVIOUS_CROPS } from "@/lib/crops";
+import {
+  MOBILE_COVERAGE_OPTS, SHAPE_OPTS, FARMER_FOCUS_OPTS, WATER_SOURCE_OPTS, IRRIGATION_OPTS,
+  SEASON_OPTS, KNOWN_ISSUE_OPTS, ANIMAL_PRESSURE_OPTS, ACCESSIBILITY_OPTS, TOOL_OPTS,
+  BENCHMARK_OPTS, GRADIENT_OPTS, WATERLOGGING_OPTS, SUNLIGHT_OPTS, FENCING_OPTS,
+} from "@/lib/dynamicFieldMeta";
 import type {
   Farm, MobileCoverage, FarmShape, FarmerFocus, WaterSource, IrrigationAvailable, Season,
   KnownIssue, AnimalPressure, Accessibility, FarmTool, BenchmarkComparison, Gradient,
   WaterloggingProbability, SunlightAvailability, FencingAvailability,
 } from "@/lib/types";
-
-// Same option lists as the field app's FarmsStep, kept in sync by hand since
-// this is a separate (admin-only) editor for the same dynamic fields.
-const MOBILE_COVERAGE_OPTS = [{ value: "good", label: "Good" }, { value: "weak", label: "Weak" }, { value: "none", label: "None" }];
-const SHAPE_OPTS = [
-  { value: "rectangle", label: "Rectangle" }, { value: "square", label: "Square" },
-  { value: "trapezoid", label: "Trapezoid" }, { value: "irregular", label: "Irregular" },
-];
-const FARMER_FOCUS_OPTS = [
-  { value: "daily", label: "Daily" }, { value: "twice_weekly", label: "Twice a week" }, { value: "weekly_plus", label: "Weekly or less" },
-];
-const WATER_SOURCE_OPTS = [
-  { value: "rainfed", label: "Rainfed" }, { value: "borewell", label: "Borewell" },
-  { value: "open_well", label: "Open well" }, { value: "farm_pond", label: "Farm pond" },
-  { value: "anicut_river", label: "Anicut / River" },
-];
-const IRRIGATION_OPTS = [
-  { value: "none", label: "None" }, { value: "flood", label: "Flood" },
-  { value: "sprinkler", label: "Sprinkler" }, { value: "drip", label: "Drip" },
-];
-const SEASON_OPTS = [
-  { value: "kharif", label: "Kharif" }, { value: "rabi", label: "Rabi" }, { value: "zaid", label: "Zaid" }, { value: "other", label: "Other" },
-];
-const KNOWN_ISSUE_OPTS = [
-  { value: "termites", label: "Termites" }, { value: "nematodes", label: "Nematodes" },
-  { value: "frost", label: "Frost" }, { value: "flooding", label: "Flooding" }, { value: "other", label: "Other" },
-];
-const ANIMAL_PRESSURE_OPTS = [
-  { value: "nilgai", label: "Nilgai" }, { value: "boar", label: "Boar" }, { value: "monkey", label: "Monkey" },
-  { value: "rabbit", label: "Rabbit" }, { value: "birds", label: "Birds" }, { value: "other", label: "Other" },
-];
-const ACCESSIBILITY_OPTS = [
-  { value: "tractor", label: "Tractor" }, { value: "small_machinery", label: "Small machinery" },
-  { value: "hand_tools", label: "Hand tools only" },
-];
-const TOOL_OPTS = [
-  { value: "tractor", label: "Tractor" }, { value: "power_tiller", label: "Power tiller" },
-  { value: "pump_set", label: "Pump set" }, { value: "sprayer", label: "Sprayer" },
-  { value: "thresher", label: "Thresher" }, { value: "plough", label: "Plough" },
-  { value: "hand_tools", label: "Hand tools" }, { value: "other", label: "Other" },
-];
-const BENCHMARK_OPTS = [
-  { value: "above", label: "Above average" }, { value: "at", label: "About average" }, { value: "below", label: "Below average" },
-];
-const GRADIENT_OPTS = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" },
-  { value: "10_30", label: "10%–30%" }, { value: "gt_30", label: ">30%" },
-];
-const WATERLOGGING_OPTS = [{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }];
-const SUNLIGHT_OPTS = [
-  { value: "lt_5", label: "<5%" }, { value: "5_10", label: "5%–10%" }, { value: "10_30", label: "10%–30%" },
-  { value: "30_50", label: "30%–50%" }, { value: "gt_50", label: ">50%" },
-];
-const FENCING_OPTS = [
-  { value: "none", label: "None" }, { value: "natural", label: "Natural" }, { value: "stone_pitch", label: "Stone pitch" },
-  { value: "wire_fence", label: "Wire fence" }, { value: "boundary_wall", label: "Boundary wall" },
-];
 
 // Every dynamic field this farm can carry — must match DYNAMIC_FIELDS.farm
 // on the backend exactly. plotSizeHectOverride is deliberately excluded from
