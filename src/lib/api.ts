@@ -107,3 +107,42 @@ export const apiUpdateUser = (
 
 export const apiDeleteUser = (token: string, id: number): Promise<{ ok: true }> =>
   req(`/api/admin/users/${id}`, { method: "DELETE", body: JSON.stringify({ token }) });
+
+// ---- Admin: dynamic-field version history (read-only) ----
+export type EntityType = "farmer" | "farm" | "plot";
+export type VersionStatus = "pending" | "current" | "rejected" | "retired";
+
+export interface EntityVersion {
+  id: number;
+  entity_type: EntityType;
+  entity_id: string;
+  version_no: number;
+  status: VersionStatus;
+  data: Record<string, any>;
+  submitted_by: string | null;
+  submitted_at: number | null;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  review_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EntityVersionFilters {
+  status?: VersionStatus | "all";
+  entityType?: EntityType | "all";
+  entityId?: string;
+  submittedBy?: string;
+  from?: number;
+  to?: number;
+  limit?: number;
+  offset?: number;
+}
+
+// Read-only history across every farmer/farm/plot dynamic-field version —
+// no edit/approve/reject affordance here, that lives on the review queue.
+export const apiListEntityVersions = (
+  token: string,
+  filters: EntityVersionFilters = {}
+): Promise<{ versions: EntityVersion[]; total: number }> =>
+  req("/api/admin/entity-versions/list", { method: "POST", body: JSON.stringify({ token, ...filters }) });

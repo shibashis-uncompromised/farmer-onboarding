@@ -7,13 +7,14 @@ import {
   Text, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { CaretDown, SignOut, UsersThree } from "@phosphor-icons/react";
+import { CaretDown, ClockCounterClockwise, SignOut, UsersThree } from "@phosphor-icons/react";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
 
 // Sidebar nav items. More sections (villages, farmers, reports…) land here later —
 // this is the one place that needs to grow to add a new admin section.
 const NAV_ITEMS = [
   { label: "Users", href: "/admin/users/", icon: UsersThree },
+  { label: "Version History", href: "/admin/versions/", icon: ClockCounterClockwise },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
