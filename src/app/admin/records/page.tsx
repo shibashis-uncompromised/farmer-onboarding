@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActionIcon, Anchor, Badge, Center, Group, Loader, Paper, Stack, Table, Tabs,
+  ActionIcon, Anchor, Badge, Button, Center, Group, Loader, Paper, Stack, Table, Tabs,
   Text, TextInput, Title, Tooltip,
 } from "@mantine/core";
-import { MagnifyingGlass, MapTrifold, PencilSimple, Plant, UsersThree, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, MagnifyingGlass, MapTrifold, PencilSimple, Plant, UsersThree, WarningCircle } from "@phosphor-icons/react";
 import { apiPull } from "@/lib/api";
 import { getSession } from "@/lib/session";
 import type { Farmer, Farm, Plot } from "@/lib/types";
@@ -24,6 +24,12 @@ export default function AdminRecordsPage() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<string | null>("farmers");
   const [query, setQuery] = useState("");
+  // Tabs are switched with local state, not real navigation, so the browser's
+  // own Back button has no history entry to undo a tab/cross-link jump — it
+  // skips straight past this page to whatever was loaded before it. This
+  // stack gives an explicit, reliable "Back" control that doesn't depend on
+  // browser history at all.
+  const [tabHistory, setTabHistory] = useState<string[]>(["farmers"]);
 
   const [editFarmer, setEditFarmer] = useState<Farmer | null>(null);
   const [editFarm, setEditFarm] = useState<Farm | null>(null);
@@ -48,7 +54,18 @@ export default function AdminRecordsPage() {
     const f = farmers?.find((x) => x.id === id);
     return f ? `${f.firstName} ${f.lastName}`.trim() || id : id;
   };
-  const jumpTo = (nextTab: string, id: string) => { setTab(nextTab); setQuery(id); };
+  const changeTab = (nextTab: string | null) => {
+    if (!nextTab) return;
+    setTab(nextTab);
+    setTabHistory((h) => (h[h.length - 1] === nextTab ? h : [...h, nextTab]));
+  };
+  const jumpTo = (nextTab: string, id: string) => { changeTab(nextTab); setQuery(id); };
+  const goBack = () => {
+    if (tabHistory.length <= 1) return;
+    const next = tabHistory.slice(0, -1);
+    setTab(next[next.length - 1]);
+    setTabHistory(next);
+  };
 
   const farmCountByFarmer = useMemo(() => {
     const m: Record<string, number> = {};
@@ -97,12 +114,19 @@ export default function AdminRecordsPage() {
         </Text>
       </div>
 
-      <TextInput
-        placeholder="Search by id, name, village or crop"
-        leftSection={<MagnifyingGlass size={16} />}
-        value={query} onChange={(e) => setQuery(e.currentTarget.value)}
-        maw={360}
-      />
+      <Group gap="sm" align="flex-end">
+        {tabHistory.length > 1 && (
+          <Button variant="default" size="sm" leftSection={<ArrowLeft size={16} />} onClick={goBack}>
+            Back
+          </Button>
+        )}
+        <TextInput
+          placeholder="Search by id, name, village or crop"
+          leftSection={<MagnifyingGlass size={16} />}
+          value={query} onChange={(e) => setQuery(e.currentTarget.value)}
+          maw={360}
+        />
+      </Group>
 
       {loading && <Center p="xl"><Loader color="green" /></Center>}
       {error && (
@@ -115,7 +139,7 @@ export default function AdminRecordsPage() {
       )}
 
       {!loading && !error && (
-        <Tabs value={tab} onChange={setTab} color="green">
+        <Tabs value={tab} onChange={changeTab} color="green">
           <Tabs.List>
             <Tabs.Tab value="farmers" leftSection={<UsersThree size={16} />}>Farmers ({farmers?.length ?? 0})</Tabs.Tab>
             <Tabs.Tab value="farms" leftSection={<Plant size={16} />}>Farms ({farms?.length ?? 0})</Tabs.Tab>
