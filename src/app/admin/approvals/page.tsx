@@ -5,11 +5,11 @@ import {
   ActionIcon, Badge, Button, Center, Divider, Group, Loader, Pagination, Paper,
   Select, Stack, Table, Text, Textarea, TextInput, Title, Tooltip,
 } from "@mantine/core";
-import { CheckCircle, ClipboardText, Eye, MagnifyingGlass, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { CheckCircle, Checks, ClipboardText, Eye, MagnifyingGlass, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
 import {
-  apiApproveEntityVersion, apiListEntityVersions, apiRejectEntityVersion,
+  apiApproveAllEntityVersions, apiApproveEntityVersion, apiListEntityVersions, apiRejectEntityVersion,
   type EntityVersion, type EntityType,
 } from "@/lib/api";
 import { getSession } from "@/lib/session";
@@ -33,6 +33,10 @@ export default function AdminApprovalsPage() {
   const [reviewing, setReviewing] = useState<EntityVersion | null>(null);
   const [note, setNote] = useState("");
   const [acting, setActing] = useState<"approve" | "reject" | null>(null);
+
+  const [approveAllOpen, setApproveAllOpen] = useState(false);
+  const [approveAllNote, setApproveAllNote] = useState("");
+  const [approvingAll, setApprovingAll] = useState(false);
 
   const [entityType, setEntityType] = useState<EntityType | "all">("all");
   const [entityId, setEntityId] = useState("");
@@ -98,15 +102,53 @@ export default function AdminApprovalsPage() {
     }
   };
 
+  const runApproveAll = async () => {
+    const session = getSession();
+    if (!session) return;
+    setApprovingAll(true);
+    try {
+      const result = await apiApproveAllEntityVersions(session.token, {
+        entityType,
+        entityId: entityId.trim() || undefined,
+        submittedBy: submittedBy.trim() || undefined,
+        note: approveAllNote.trim() || undefined,
+      });
+      if (result.failed.length === 0) {
+        notifications.show({ color: "green", message: `Approved ${result.approved} submission${result.approved === 1 ? "" : "s"}` });
+      } else {
+        notifications.show({
+          color: "yellow",
+          message: `Approved ${result.approved} of ${result.total} — ${result.failed.length} failed (someone may have just reviewed them)`,
+        });
+      }
+      setApproveAllOpen(false);
+      setApproveAllNote("");
+      setReloadTick((n) => n + 1);
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || "Could not approve all submissions" });
+    } finally {
+      setApprovingAll(false);
+    }
+  };
+
   return (
     <Stack gap="lg">
-      <div>
-        <Title order={3}>Approvals</Title>
-        <Text c="dimmed" size="sm">
-          Field submissions from POCs waiting on review. Approving replaces the entity&apos;s current
-          values; rejecting leaves them untouched and keeps the submission on record as rejected.
-        </Text>
-      </div>
+      <Group justify="space-between" align="flex-start" wrap="wrap">
+        <div>
+          <Title order={3}>Approvals</Title>
+          <Text c="dimmed" size="sm">
+            Field submissions from POCs waiting on review. Approving replaces the entity&apos;s current
+            values; rejecting leaves them untouched and keeps the submission on record as rejected.
+          </Text>
+        </div>
+        <Button
+          color="green" leftSection={<Checks size={16} />}
+          disabled={!versions || versions.length === 0}
+          onClick={() => setApproveAllOpen(true)}
+        >
+          Approve all{total > 0 ? ` (${total})` : ""}
+        </Button>
+      </Group>
 
       <Group wrap="wrap" gap="sm" align="flex-end">
         <Select
@@ -321,6 +363,39 @@ export default function AdminApprovalsPage() {
             </Group>
           </Stack>
         )}
+      </AppModal>
+
+      <AppModal
+        opened={approveAllOpen}
+        onClose={() => { if (!approvingAll) { setApproveAllOpen(false); setApproveAllNote(""); } }}
+        title="Approve all matching submissions"
+        size="sm"
+        closeOnClickOutside={!approvingAll}
+        withCloseButton={!approvingAll}
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            This approves <Text span fw={600}>{total}</Text> pending submission{total === 1 ? "" : "s"} matching the
+            current filters — each becomes the entity&apos;s current version, retiring whatever was current before it.
+            This can&apos;t be undone from here.
+          </Text>
+          <Textarea
+            label="Review note (optional)"
+            placeholder="Applied to every submission approved in this batch"
+            value={approveAllNote}
+            onChange={(e) => setApproveAllNote(e.currentTarget.value)}
+            autosize minRows={2} maxRows={4}
+            disabled={approvingAll}
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" disabled={approvingAll} onClick={() => { setApproveAllOpen(false); setApproveAllNote(""); }}>
+              Cancel
+            </Button>
+            <Button color="green" leftSection={<Checks size={16} />} loading={approvingAll} onClick={runApproveAll}>
+              Approve all
+            </Button>
+          </Group>
+        </Stack>
       </AppModal>
     </Stack>
   );

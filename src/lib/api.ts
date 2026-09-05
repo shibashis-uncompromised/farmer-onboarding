@@ -184,3 +184,25 @@ export const apiRejectEntityVersion = (
   note?: string
 ): Promise<{ ok: true }> =>
   req(`/api/admin/entity-versions/${id}/reject`, { method: "POST", body: JSON.stringify({ token, note }) });
+
+// Bulk counterpart of apiApproveEntityVersion — approves every still-pending
+// submission matching these filters (same shape as apiListEntityVersions,
+// minus status which is always implicitly "pending") in one call.
+export interface ApproveAllFilters {
+  entityType?: EntityType | "all";
+  entityId?: string;
+  submittedBy?: string;
+  from?: number;
+  to?: number;
+  note?: string;
+}
+export interface ApproveAllResult {
+  approved: number;
+  total: number;
+  failed: { id: number; entityType: EntityType; entityId: string; error: string }[];
+}
+export const apiApproveAllEntityVersions = (
+  token: string,
+  filters: ApproveAllFilters = {}
+): Promise<ApproveAllResult> =>
+  req("/api/admin/entity-versions/approve-all", { method: "POST", body: JSON.stringify({ token, ...filters }) });
