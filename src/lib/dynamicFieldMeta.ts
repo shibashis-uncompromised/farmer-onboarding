@@ -1,10 +1,36 @@
 // Central metadata for every dynamic (seasonally re-versioned) field across
 // farmers, farms and plots: labels and select/multiselect option lists. Kept
 // in one place so the admin edit forms (components/admin/Edit*Modal) and the
-// version-history viewer (app/admin/versions) never drift out of sync on
-// what a raw field/value actually means.
+// version-history/approvals viewers (app/admin/versions, app/admin/approvals)
+// never drift out of sync on what a raw field/value actually means.
+
+import type { EntityType, VersionStatus } from "./api";
 
 export interface FieldOption { value: string; label: string }
+
+// Shared entity/status display metadata — one definition used by both the
+// read-only Version History page and the approve/reject queue, so their
+// badges and labels can never quietly diverge from each other.
+export const ENTITY_LABEL: Record<EntityType, string> = { farmer: "Farmer", farm: "Farm", plot: "Plot" };
+export const ENTITY_COLOR: Record<EntityType, string> = { farmer: "grape", farm: "blue", plot: "teal" };
+export const STATUS_LABEL: Record<VersionStatus, string> = {
+  pending: "Pending", current: "Current", rejected: "Rejected", retired: "Retired",
+};
+export const STATUS_COLOR: Record<VersionStatus, string> = {
+  pending: "yellow", current: "green", rejected: "red", retired: "gray",
+};
+
+// submitted_at/reviewed_at are BIGINT columns in Postgres, which node-postgres
+// returns as strings (not numbers) — new Date("1756...") tries to parse that
+// as a date STRING and fails ("Invalid Date"), rather than treating it as an
+// epoch. Coerce defensively, same fix already used for soil_samples elsewhere
+// in this app's backend.
+export function fmtVersionDate(ms: number | string | null | undefined): string {
+  if (ms === null || ms === undefined || ms === "") return "—";
+  const n = typeof ms === "number" ? ms : Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return new Date(n).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+}
 
 export const FINANCIAL_CAPACITY_OPTS: FieldOption[] = [
   { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },

@@ -11,34 +11,16 @@ import {
   apiListEntityVersions, type EntityVersion, type EntityType, type VersionStatus,
 } from "@/lib/api";
 import { getSession } from "@/lib/session";
-import { diffDynamicFields, dynamicFieldRows, fieldLabel, formatFieldValue } from "@/lib/dynamicFieldMeta";
+import {
+  diffDynamicFields, dynamicFieldRows, fieldLabel, formatFieldValue,
+  ENTITY_LABEL, ENTITY_COLOR, STATUS_LABEL, STATUS_COLOR, fmtVersionDate as fmtDate,
+} from "@/lib/dynamicFieldMeta";
 
 // Read-only history of every dynamic-field version across farmers, farms and
 // plots. There is no edit/approve/reject action here on purpose — this page
-// is an audit trail; the review queue (approve/reject) lives elsewhere.
-
-const STATUS_COLOR: Record<VersionStatus, string> = {
-  pending: "yellow", current: "green", rejected: "red", retired: "gray",
-};
-const STATUS_LABEL: Record<VersionStatus, string> = {
-  pending: "Pending", current: "Current", rejected: "Rejected", retired: "Retired",
-};
-const ENTITY_LABEL: Record<EntityType, string> = { farmer: "Farmer", farm: "Farm", plot: "Plot" };
-const ENTITY_COLOR: Record<EntityType, string> = { farmer: "grape", farm: "blue", plot: "teal" };
+// is an audit trail; the review queue (approve/reject) lives on /admin/approvals.
 
 const PAGE_SIZE = 20;
-
-// submitted_at/reviewed_at are BIGINT columns in Postgres, which node-postgres
-// returns as strings (not numbers) — new Date("1756...") tries to parse that
-// as a date STRING and fails ("Invalid Date"), rather than treating it as an
-// epoch. Coerce defensively, same fix already used for soil_samples elsewhere
-// in this app's backend.
-function fmtDate(ms: number | string | null | undefined) {
-  if (ms === null || ms === undefined || ms === "") return "—";
-  const n = typeof ms === "number" ? ms : Number(ms);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  return new Date(n).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
-}
 
 // Compact one-line preview of what this version actually CHANGED relative
 // to the version right before it (not just a re-listing of every field it

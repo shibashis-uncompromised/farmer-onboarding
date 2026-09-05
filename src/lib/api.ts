@@ -166,3 +166,21 @@ export const apiDirectUpdateEntityVersion = (
   payload: DirectUpdatePayload
 ): Promise<{ ok: true }> =>
   req("/api/admin/entity-versions/direct-update", { method: "POST", body: JSON.stringify({ token, ...payload }) });
+
+// ---- Admin: pending-version review queue (approve/reject) ----
+// A POC's submission sits as `pending` until admin approves (becomes
+// `current`, retiring whatever was `current` before it) or rejects it
+// (stays around as `rejected` for the audit trail, entity is untouched).
+export const apiApproveEntityVersion = (
+  token: string,
+  id: number,
+  note?: string
+): Promise<{ ok: true }> =>
+  req(`/api/admin/entity-versions/${id}/approve`, { method: "POST", body: JSON.stringify({ token, note }) });
+
+export const apiRejectEntityVersion = (
+  token: string,
+  id: number,
+  note?: string
+): Promise<{ ok: true }> =>
+  req(`/api/admin/entity-versions/${id}/reject`, { method: "POST", body: JSON.stringify({ token, note }) });
