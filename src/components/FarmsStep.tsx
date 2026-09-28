@@ -33,6 +33,7 @@ import { softDeletePlot } from "@/lib/softDelete";
 import { CROPS, PREVIOUS_CROPS } from "@/lib/crops";
 import { useMediaUrl } from "@/lib/useMediaUrl";
 import PhotoInput from "./PhotoInput";
+import MultiPhotoInput, { type PhotoItem } from "./MultiPhotoInput";
 import AppModal from "./AppModal";
 import QrScanner from "./QrScanner";
 import MapErrorBoundary from "./MapErrorBoundary";
@@ -365,7 +366,16 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       </Group>
       {/* Tapping the card body opens the farm's detail view */}
       <UnstyledButton w="100%" onClick={detailModal.open} aria-label="Farm details">
-        {url && <Image src={url} h={120} radius="sm" mb="xs" fit="cover" alt="farm" />}
+        {url && (
+          <Box pos="relative" mb="xs">
+            <Image src={url} h={120} radius="sm" fit="cover" alt="farm" />
+            {(farm.photoIds?.length ?? 0) > 1 && (
+              <Badge color="dark" variant="filled" size="sm" style={{ position: "absolute", top: 6, right: 6 }}>
+                {farm.photoIds!.length} photos
+              </Badge>
+            )}
+          </Box>
+        )}
         <Group gap={6} mb="sm">
           <MapPinLine size={15} color="var(--mantine-color-green-7)" />
           <Text size="sm" c="dimmed">{fmtCoord(farm.lat)}, {fmtCoord(farm.lng)}</Text>
@@ -908,6 +918,14 @@ function PlotSummaryLine({ plot: p }: { plot: any }) {
   );
 }
 
+// One photo in the detail gallery — resolves its blob lazily via useMediaUrl.
+function GalleryPhoto({ mediaId }: { mediaId: string }) {
+  const url = useMediaUrl(mediaId);
+  return url
+    ? <Image src={url} w={120} h={120} radius="md" fit="cover" alt="farm photo" style={{ flex: "0 0 auto" }} />
+    : <Box w={120} h={120} bg="gray.1" style={{ borderRadius: 8, flex: "0 0 auto", display: "grid", placeItems: "center" }}><Loader size="xs" color="green" /></Box>;
+}
+
 // ---- Read-only farm detail view (tap the farm card) ----
 function FarmDetailModal(
   { opened, onClose, farm, plots, samples, photoUrl, onEdit }:
@@ -918,7 +936,16 @@ function FarmDetailModal(
   return (
     <AppModal opened={opened} onClose={onClose} title={`Farm · ${farm.id}`}>
       <Stack gap="md">
-        {photoUrl && <Image src={photoUrl} h={180} radius="md" fit="cover" alt="farm" />}
+        {(() => {
+          const ids = farm.photoIds && farm.photoIds.length ? farm.photoIds : (farm.photoId ? [farm.photoId] : []);
+          if (!ids.length) return null;
+          if (ids.length === 1) return photoUrl ? <Image src={photoUrl} h={180} radius="md" fit="cover" alt="farm" /> : <GalleryPhoto mediaId={ids[0]} />;
+          return (
+            <Group gap="sm" wrap="nowrap" style={{ overflowX: "auto" }}>
+              {ids.map((mid) => <GalleryPhoto key={mid} mediaId={mid} />)}
+            </Group>
+          );
+        })()}
 
         <Paper withBorder radius="md" p="sm">
           <Group gap={8}>
@@ -1279,8 +1306,7 @@ function AddFarmModal(
   const villageCode = editFarm?.villageCode ?? farmer?.villageCode ?? "";
   const farmerId = editFarm?.farmerId ?? farmer?.id ?? "";
 
-  const [photo, setPhoto] = useState<Blob | null>(null);
-  const [photoDirty, setPhotoDirty] = useState(false);
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
   const [loc, setLoc] = useState<SessionLocation | null>(null);
   const [boundary, setBoundary] = useState<BoundaryPoint[]>([]);
   const [note, setNote] = useState("");
@@ -1316,10 +1342,6 @@ function AddFarmModal(
   const [sunlightAvailability, setSunlightAvailability] = useState<SunlightAvailability | "">("");
   const [fencingAvailability, setFencingAvailability] = useState<FencingAvailability | "">("");
 
-  const existingPhoto = useLiveQuery(
-    () => (editFarm?.photoId ? db.media.get(editFarm.photoId) : undefined),
-    [editFarm?.photoId]
-  );
   // Derived shape/size from the walked boundary — auto-fills once there's a
   // boundary to compute from, but the field always stays enabled and
   // editable so a supervisor can fill it in by hand when no boundary was
@@ -1401,8 +1423,10 @@ function AddFarmModal(
   // Prefill (edit) or clear (add) whenever the modal opens.
   useEffect(() => {
     if (!opened) return;
-    setPhotoDirty(false);
     if (editFarm) {
+      // Existing photos: prefer the photoIds array, fall back to the single photoId.
+      const ids = editFarm.photoIds && editFarm.photoIds.length ? editFarm.photoIds : (editFarm.photoId ? [editFarm.photoId] : []);
+      setPhotoItems(ids.map((mid) => ({ key: mid, mediaId: mid })));
       setLoc(editFarm.lat != null && editFarm.lng != null
         ? { lat: editFarm.lat, lng: editFarm.lng, accuracy: editFarm.accuracy ?? 0, at: editFarm.updatedAt }
         : null);
@@ -1433,7 +1457,7 @@ function AddFarmModal(
       setSunlightAvailability(editFarm.sunlightAvailability ?? "");
       setFencingAvailability(editFarm.fencingAvailability ?? "");
     } else {
-      setPhoto(null); setLoc(null); setBoundary([]); setNote("");
+      setPhotoItems([]); setLoc(null); setBoundary([]); setNote("");
       setTreeCountBig(""); setTreeCountSmall(""); setMobileCoverage("");
       setShapeOverride(""); setPlotSizeOverride("");
       setFarmerFocus(""); setWaterSource([]); setIrrigationAvailable([]);
@@ -1444,10 +1468,20 @@ function AddFarmModal(
     }
   }, [opened, editFarm]);
 
-  // Load the existing farm photo (edit mode), unless the user picked a new one.
-  useEffect(() => {
-    if (opened && editFarm && !photoDirty && existingPhoto?.blob) setPhoto(existingPhoto.blob);
-  }, [opened, editFarm, existingPhoto, photoDirty]);
+  // Persist the current photo list to media rows and return the ordered ids.
+  // New items (blob) become media rows; existing items (mediaId) are kept as-is.
+  const persistPhotos = async (now: number): Promise<string[]> => {
+    const ids: string[] = [];
+    for (const it of photoItems) {
+      if (it.mediaId) { ids.push(it.mediaId); continue; }
+      if (it.blob) {
+        const id = uid();
+        await db.media.add({ id, blob: it.blob, createdAt: now, synced: false });
+        ids.push(id);
+      }
+    }
+    return ids;
+  };
 
   const save = async () => {
     setSaving(true);
@@ -1487,15 +1521,17 @@ function AddFarmModal(
         fencingAvailability: (fencingAvailability || null) as FencingAvailability | null,
       };
 
+      const finalIds = await persistPhotos(now);
+
       if (editFarm) {
-        let photoId = editFarm.photoId;
-        if (photoDirty) {
-          if (photoId) await db.media.delete(photoId).catch(() => {});
-          if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: now, synced: false }); }
-          else photoId = null;
+        // Delete media rows the user removed from the list.
+        const prevIds = editFarm.photoIds && editFarm.photoIds.length ? editFarm.photoIds : (editFarm.photoId ? [editFarm.photoId] : []);
+        for (const mid of prevIds) {
+          if (!finalIds.includes(mid)) await db.media.delete(mid).catch(() => {});
         }
         await db.farms.update(editFarm.id, {
-          photoId, lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
+          photoId: finalIds[0] ?? null, photoIds: finalIds,
+          lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
           ...attrFields,
           updatedAt: now, synced: false,
@@ -1504,10 +1540,8 @@ function AddFarmModal(
         notifications.show({ color: "green", message: `Farm ${editFarm.id} updated` });
       } else {
         const id = await nextFarmId(villageCode);
-        let photoId: string | null = null;
-        if (photo) { photoId = uid(); await db.media.add({ id: photoId, blob: photo, createdAt: now, synced: false }); }
         await db.farms.add({
-          id, farmerId, villageCode, photoId,
+          id, farmerId, villageCode, photoId: finalIds[0] ?? null, photoIds: finalIds,
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
           ...attrFields,
@@ -1516,7 +1550,6 @@ function AddFarmModal(
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });
         notifications.show({ color: "green", message: `Farm ${id} added` });
       }
-      setPhotoDirty(false);
       onClose();
       syncNow().catch(() => {});
     } catch (e: any) {
@@ -1541,7 +1574,7 @@ function AddFarmModal(
             {editFarm ? "Update farm" : "Save farm"}
           </Button>
         </Box>
-        <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
+        <MultiPhotoInput items={photoItems} onChange={setPhotoItems} label="Farm photos" />
 
         <Stack gap="sm">
           <SectionDivider icon={<MapPinLine size={14} />} label="Physical fieldwork" />
