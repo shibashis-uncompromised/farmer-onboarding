@@ -133,7 +133,11 @@ export async function exportAllZip(): Promise<{ farmers: number }> {
   }
   for (const fm of farms) {
     const farmer = farmerById.get(fm.farmerId);
-    if (fm.photoId && mediaMap.has(fm.photoId)) farmPhotos.file(`${safeFileSegment(fm.id)}_${farmer ? farmerFileName(farmer) : "unknown_farmer"}.jpg`, mediaMap.get(fm.photoId)!);
+    const base = `${safeFileSegment(fm.id)}_${farmer ? farmerFileName(farmer) : "unknown_farmer"}`;
+    const ids = fm.photoIds && fm.photoIds.length ? fm.photoIds : (fm.photoId ? [fm.photoId] : []);
+    ids.forEach((mid, i) => {
+      if (mediaMap.has(mid)) farmPhotos.file(`${base}${i === 0 ? "" : `_${i + 1}`}.jpg`, mediaMap.get(mid)!);
+    });
   }
 
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });

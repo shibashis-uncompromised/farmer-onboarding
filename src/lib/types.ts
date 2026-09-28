@@ -92,7 +92,8 @@ export interface Farm {
   alias?: string;        // sanitized sequential id per village (F001…); see farm-aliases/ map
   farmerId: string;
   villageCode: string;
-  photoId: string | null;
+  photoId: string | null;       // first/primary photo — kept for back-compat & thumbnails
+  photoIds?: string[];          // all farm photos (media ids); photoId === photoIds[0]
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
