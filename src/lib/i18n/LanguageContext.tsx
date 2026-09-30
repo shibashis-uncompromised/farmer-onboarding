@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type Context, type ReactNode } from "react";
 import { en } from "./en";
 import { hi } from "./hi";
 import type { TranslationKey } from "./en";
@@ -18,7 +18,11 @@ interface LanguageContextValue {
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
-const LanguageContext = createContext<LanguageContextValue | null>(null);
+// Kept on globalThis so a Fast Refresh re-evaluation of this module reuses the
+// same context object — otherwise the already-mounted provider holds the old
+// one and every useLanguage() throws until a full reload.
+const g = globalThis as { __languageContext?: Context<LanguageContextValue | null> };
+const LanguageContext = (g.__languageContext ??= createContext<LanguageContextValue | null>(null));
 
 function interpolate(template: string, vars?: Record<string, string | number>): string {
   if (!vars) return template;

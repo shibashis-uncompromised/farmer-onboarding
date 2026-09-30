@@ -24,6 +24,24 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    // The SW serves pages and JS chunks cache-first. Under `next dev` that
+    // mixes stale cached chunks with freshly compiled ones (e.g. two copies
+    // of LanguageContext → "useLanguage must be used within a
+    // LanguageProvider"), so never run it in development — and remove any
+    // worker + caches left over from an earlier dev session.
+    if (process.env.NODE_ENV !== "production") {
+      navigator.serviceWorker.getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .then((removed) => {
+          if (!removed.length) return;
+          return caches.keys()
+            .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+            .then(() => window.location.reload()); // reload once, now without the SW
+        })
+        .catch(() => {});
+      return;
+    }
+
     // Auto-update: when a new service worker is deployed, reload once so the
     // user lands on the latest version — but NEVER mid-work. If a modal is open
     // or a field is focused (surveyor typing), defer the reload until the app

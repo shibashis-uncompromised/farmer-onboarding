@@ -1514,7 +1514,7 @@ function AddFarmModal(
             {editFarm ? t("farms_updateFarm") : t("farms_saveFarm")}
           </Button>
         </Box>
-        <PhotoInput label="Farm photo" value={photo} onChange={(b) => { setPhoto(b); setPhotoDirty(true); }} height={160} />
+        <MultiPhotoInput label="Farm photos" items={photoItems} onChange={setPhotoItems} />
 
         <Stack gap="sm">
           <SectionDivider icon={<MapPinLine size={14} />} label={t("farms_physicalFieldwork")} />

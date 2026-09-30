@@ -12,6 +12,12 @@ import { getCropLabel } from "./dataLabels";
 
 export const CROPS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric"];
 
+// Appends any current-season crop missing from the previous-crop list, so a
+// crop added to CROPS is always selectable as a previous crop too.
+function withNewCrops(list: string[]): string[] {
+  return [...list, ...CROPS.filter((c) => !list.includes(c))];
+}
+
 export const PREVIOUS_CROPS = withNewCrops([
   "NA",
   "Paddy",
@@ -43,7 +49,7 @@ export const PREVIOUS_CROPS = withNewCrops([
   "Vegetables/Mixed",
   "Fodder",
   "Fallow",
-];
+]);
 
 // Translated display label for a raw crop value — falls back to the raw
 // value itself when it isn't one of the known crops (e.g. legacy free text
