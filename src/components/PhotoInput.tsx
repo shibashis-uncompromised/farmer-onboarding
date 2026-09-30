@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActionIcon, Box, Button, Group, Image, Stack, Text } from "@mantine/core";
 import { Camera, ArrowsClockwise, Trash } from "@phosphor-icons/react";
 import { compressImage } from "@/lib/image";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface Props {
   value?: Blob | null;
@@ -13,7 +14,9 @@ interface Props {
   compact?: boolean;   // small square thumbnail tile instead of a tall banner
 }
 
-export default function PhotoInput({ value, onChange, height = 200, label = "Photo", compact = false }: Props) {
+export default function PhotoInput({ value, onChange, height = 200, label, compact = false }: Props) {
+  const { t } = useLanguage();
+  const resolvedLabel = label ?? t("bio_photo");
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,13 +55,13 @@ export default function PhotoInput({ value, onChange, height = 200, label = "Pho
     const side = 96;
     return (
       <Stack gap={6}>
-        {label && <Text size="sm" fw={500}>{label}</Text>}
+        {resolvedLabel && <Text size="sm" fw={500}>{resolvedLabel}</Text>}
         {fileInput}
         {url ? (
           <Box pos="relative" w={side} h={side}>
-            <Image src={url} w={side} h={side} radius="md" fit="cover" alt="photo" onClick={pick} style={{ cursor: "pointer" }} />
+            <Image src={url} w={side} h={side} radius="md" fit="cover" alt={t("bio_photo")} onClick={pick} style={{ cursor: "pointer" }} />
             <ActionIcon
-              variant="filled" color="red" size="sm" radius="xl" onClick={() => onChange(null)} aria-label="Remove"
+              variant="filled" color="red" size="sm" radius="xl" onClick={() => onChange(null)} aria-label={t("photoInput_removeAria")}
               style={{ position: "absolute", top: -6, right: -6 }}
             >
               <Trash size={12} />
@@ -70,7 +73,7 @@ export default function PhotoInput({ value, onChange, height = 200, label = "Pho
             styles={{ root: { borderStyle: "dashed", borderWidth: 2 }, label: { flexDirection: "column", gap: 2 } }}
           >
             <Camera size={22} weight="duotone" />
-            <Text size="9px">Photo</Text>
+            <Text size="9px">{t("bio_photo")}</Text>
           </Button>
         )}
       </Stack>
@@ -79,16 +82,16 @@ export default function PhotoInput({ value, onChange, height = 200, label = "Pho
 
   return (
     <Stack gap={6}>
-      {label && <Text size="sm" fw={500}>{label}</Text>}
+      {resolvedLabel && <Text size="sm" fw={500}>{resolvedLabel}</Text>}
       {fileInput}
       {url ? (
         <Box pos="relative">
-          <Image src={url} h={height} radius="md" fit="cover" alt="photo" />
+          <Image src={url} h={height} radius="md" fit="cover" alt={t("bio_photo")} />
           <Group gap={6} pos="absolute" top={8} right={8}>
-            <ActionIcon variant="filled" color="dark" onClick={pick} aria-label="Retake" loading={busy}>
+            <ActionIcon variant="filled" color="dark" onClick={pick} aria-label={t("photoInput_retakeAria")} loading={busy}>
               <ArrowsClockwise size={16} />
             </ActionIcon>
-            <ActionIcon variant="filled" color="red" onClick={() => onChange(null)} aria-label="Remove">
+            <ActionIcon variant="filled" color="red" onClick={() => onChange(null)} aria-label={t("photoInput_removeAria")}>
               <Trash size={16} />
             </ActionIcon>
           </Group>
@@ -99,7 +102,7 @@ export default function PhotoInput({ value, onChange, height = 200, label = "Pho
           leftSection={<Camera size={22} weight="duotone" />}
           styles={{ root: { borderStyle: "dashed", borderWidth: 2 } }}
         >
-          Take / choose photo
+          {t("photoInput_takeOrChoose")}
         </Button>
       )}
     </Stack>

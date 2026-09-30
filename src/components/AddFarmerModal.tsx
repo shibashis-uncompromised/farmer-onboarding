@@ -8,10 +8,11 @@ import { notifications } from "@mantine/notifications";
 import { db } from "@/lib/db";
 import { nextFarmerId } from "@/lib/ids";
 import { villageCodeFromId } from "@/lib/qr";
-import { villagesForUser } from "@/lib/villages";
+import { villagesForUser, villageNameLabel, villageBlockLabel } from "@/lib/villages";
 import { getSession } from "@/lib/session";
 import { blurOnEnter } from "@/lib/ui";
 import type { Farmer } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface Props {
   opened: boolean;
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function AddFarmerModal({ opened, onClose, defaultVillage, onCreated, scannedCode }: Props) {
+  const { t, language } = useLanguage();
   const [village, setVillage] = useState(defaultVillage);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -52,11 +54,11 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
         const existing = await db.farmers.get(id);
         if (existing) {
           if (existing.deleted) {
-            notifications.show({ color: "yellow", message: `${id} is hidden/deleted` });
+            notifications.show({ color: "yellow", message: t("addFarmer_hiddenToast", { id }) });
             onClose();
             return;
           }
-          notifications.show({ color: "blue", message: `${id} already exists — opening` });
+          notifications.show({ color: "blue", message: t("addFarmer_existingToast", { id }) });
           onCreated(id);
           onClose();
           return;
@@ -72,43 +74,43 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
         createdAt: now, updatedAt: now, synced: false,
       };
       await db.farmers.add(farmer);
-      notifications.show({ color: "green", message: `Farmer ${id} created` });
+      notifications.show({ color: "green", message: t("addFarmer_createdToast", { id }) });
       onCreated(id);
       onClose();
     } catch (e: any) {
-      notifications.show({ color: "red", message: e?.message || "Could not create farmer" });
+      notifications.show({ color: "red", message: e?.message || t("addFarmer_createFailed") });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppModal opened={opened} onClose={onClose} title={scannedCode ? "New farmer (scanned)" : "Add farmer"}>
+    <AppModal opened={opened} onClose={onClose} title={scannedCode ? t("addFarmer_titleScanned") : t("addFarmer_titleNew")}>
       <Stack gap="md">
         {scannedCode && (
-          <TextInput label="Scanned code" value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
+          <TextInput label={t("addFarmer_scannedCodeLabel")} value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
         )}
         <Select
-          label="Village" data={villagesForUser(getSession()?.username).map((v) => ({ value: v.code, label: `${v.name} (${v.block})` }))}
+          label={t("scanSample_villageLabel")} data={villagesForUser(getSession()?.username).map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} (${villageBlockLabel(v, language)})` }))}
           value={village} onChange={(v) => setVillage(v || "")} allowDeselect={false} checkIconPosition="right"
         />
-        <TextInput label="First name" placeholder="e.g. Motilal" value={first}
+        <TextInput label={t("bio_firstName")} placeholder={t("addFarmer_firstNamePlaceholder")} value={first}
           onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required data-autofocus />
-        <TextInput label="Last name" placeholder="e.g. Prathaji" value={last}
+        <TextInput label={t("bio_lastName")} placeholder={t("addFarmer_lastNamePlaceholder")} value={last}
           onChange={(e) => setLast(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (canSave) save(); } }}
           enterKeyHint="done" required />
         <div>
-          <Text size="sm" fw={500} mb={6}>Type</Text>
+          <Text size="sm" fw={500} mb={6}>{t("addFarmer_typeLabel")}</Text>
           <SegmentedControl
             fullWidth value={farmerType} onChange={(v) => setFarmerType(v as "lead" | "existing")}
-            data={[{ label: "Lead", value: "lead" }, { label: "Existing", value: "existing" }]}
+            data={[{ label: t("bio_lead"), value: "lead" }, { label: t("bio_existing"), value: "existing" }]}
           />
         </div>
         <Group justify="flex-end" mt="xs">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button variant="default" onClick={onClose}>{t("common_cancel")}</Button>
           <Button onClick={save} loading={saving} disabled={!canSave} leftSection={<UserPlus size={18} />}>
-            Create
+            {t("addFarmer_createButton")}
           </Button>
         </Group>
       </Stack>

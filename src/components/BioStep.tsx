@@ -18,19 +18,11 @@ import type { Farmer, SeedPackage, FinancialCapacity, Landholding, AdoptionLevel
 import PhotoInput from "./PhotoInput";
 import SeedsInput from "./SeedsInput";
 import { blurOnEnter } from "@/lib/ui";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { financialCapacityOpts, landholdingOpts, adoptionLevelOpts } from "@/lib/dynamicFieldMeta";
 
 const RELATIONS = ["S/o", "W/o", "D/o", "C/o"];
 
-const FINANCIAL_CAPACITY_OPTS = [
-  { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" },
-];
-const LANDHOLDING_OPTS = [
-  { value: "lt_2_5", label: "< 2.5 acres" }, { value: "between_2_5_10", label: "2.5–10 acres" }, { value: "gt_10", label: "> 10 acres" },
-];
-const ADOPTION_LEVEL_OPTS = [
-  { value: "basic", label: "Basic" }, { value: "improved", label: "Improved" },
-  { value: "progressive", label: "Progressive" }, { value: "advanced", label: "Advanced" },
-];
 const labelOf = (opts: { value: string; label: string }[], v?: string | null) => opts.find((o) => o.value === v)?.label || null;
 
 export default function BioStep({
@@ -40,6 +32,7 @@ export default function BioStep({
   onSaved: () => void;
   onContinue: () => void;
 }) {
+  const { t } = useLanguage();
   const [editing, setEditing] = useState(!farmer.bioComplete);
   const [first, setFirst] = useState(farmer.firstName);
   const [last, setLast] = useState(farmer.lastName);
@@ -77,7 +70,7 @@ export default function BioStep({
 
   const save = async () => {
     if (!canSave) {
-      notifications.show({ color: "red", message: "First and last name are required" });
+      notifications.show({ color: "red", message: t("bio_nameRequired") });
       return;
     }
     setSaving(true);
@@ -106,7 +99,7 @@ export default function BioStep({
       });
       setPhotoDirty(false);
       setEditing(false);
-      notifications.show({ color: "green", message: "Bio data saved" });
+      notifications.show({ color: "green", message: t("bio_savedToast") });
       onSaved();
     } finally {
       setSaving(false);
@@ -121,10 +114,10 @@ export default function BioStep({
       <Stack gap="md">
         <Group justify="space-between">
           <Badge color="teal" variant="light" leftSection={<CheckCircle size={14} weight="fill" />}>
-            Saved
+            {t("bio_saved")}
           </Badge>
           <Button size="xs" variant="light" leftSection={<PencilSimple size={14} />} onClick={() => setEditing(true)}>
-            Edit
+            {t("common_edit")}
           </Button>
         </Group>
         <Group>
@@ -135,7 +128,7 @@ export default function BioStep({
             <Group gap={8} align="center">
               <Text fw={700} size="lg">{first} {last}</Text>
               <Badge size="sm" variant="light" color={farmerType === "existing" ? "grape" : "blue"}>
-                {farmerType === "existing" ? "Existing" : "Lead"}
+                {farmerType === "existing" ? t("bio_existing") : t("bio_lead")}
               </Badge>
             </Group>
             {co && <Text c="dimmed">{relation} {co}</Text>}
@@ -144,17 +137,17 @@ export default function BioStep({
         </Group>
         <Divider />
         <SimpleGrid cols={2} spacing="sm">
-          <Field label="Phone" value={phone || "—"} />
-          <Field label="Smartphone" value={smartphone === "yes" ? "Yes" : smartphone === "no" ? "No" : "—"} />
+          <Field label={t("bio_phone")} value={phone || "—"} />
+          <Field label={t("bio_smartphone")} value={smartphone === "yes" ? t("common_yes") : smartphone === "no" ? t("common_no") : "—"} />
         </SimpleGrid>
         <SimpleGrid cols={2} spacing="sm">
-          <Field label="Financial capacity" value={labelOf(FINANCIAL_CAPACITY_OPTS, financialCapacity) || "—"} />
-          <Field label="Landholding" value={labelOf(LANDHOLDING_OPTS, landholding) || "—"} />
+          <Field label={t("field_financialCapacity")} value={labelOf(financialCapacityOpts(t), financialCapacity) || "—"} />
+          <Field label={t("field_landholding")} value={labelOf(landholdingOpts(t), landholding) || "—"} />
         </SimpleGrid>
-        <Field label="Adoption level" value={labelOf(ADOPTION_LEVEL_OPTS, adoptionLevel) || "—"} />
+        <Field label={t("field_adoptionLevel")} value={labelOf(adoptionLevelOpts(t), adoptionLevel) || "—"} />
         {seeds.length > 0 && (
           <div>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={4}>Seed packages</Text>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={4}>{t("field_seeds")}</Text>
             <Group gap={6}>
               {seeds.map((s) => (
                 <Badge key={s.seed} variant="light" color="green" leftSection={<Plant size={12} />}>
@@ -164,10 +157,10 @@ export default function BioStep({
             </Group>
           </div>
         )}
-        {note.trim() && <Field label="Note" value={note} />}
+        {note.trim() && <Field label={t("bio_note")} value={note} />}
 
         <Button fullWidth size="md" color="green" rightSection={<ArrowRight size={18} weight="bold" />} onClick={onContinue}>
-          Continue to Farms &amp; Plots
+          {t("bio_continueToFarms")}
         </Button>
       </Stack>
     );
@@ -178,27 +171,27 @@ export default function BioStep({
     <Stack gap="md">
       <Group align="flex-start" wrap="nowrap" gap="sm">
         <PhotoInput
-          compact label="Photo"
+          compact label={t("bio_photo")}
           value={photo}
           onChange={(b) => { setPhoto(b); setPhotoDirty(true); }}
         />
         <Box style={{ flex: 1, minWidth: 0 }}>
-          <TextInput label="First name" value={first} onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required mb={6} />
-          <TextInput label="Last name" value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
+          <TextInput label={t("bio_firstName")} value={first} onChange={(e) => setFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required mb={6} />
+          <TextInput label={t("bio_lastName")} value={last} onChange={(e) => setLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" required />
         </Box>
       </Group>
 
       <div>
-        <Text size="sm" fw={500} mb={6}>Type</Text>
+        <Text size="sm" fw={500} mb={6}>{t("bio_type")}</Text>
         <SegmentedControl
           fullWidth value={farmerType} onChange={(v) => setFarmerType(v as "lead" | "existing")}
-          data={[{ label: "Lead", value: "lead" }, { label: "Existing", value: "existing" }]}
+          data={[{ label: t("bio_lead"), value: "lead" }, { label: t("bio_existing"), value: "existing" }]}
         />
       </div>
 
       <Switch
         checked={coOn} onChange={(e) => setCoOn(e.currentTarget.checked)}
-        label="Add care-of (C/o)" color="green"
+        label={t("bio_addCareOf")} color="green"
       />
       <Collapse in={coOn}>
         <Stack gap="sm">
@@ -206,8 +199,8 @@ export default function BioStep({
             fullWidth data={RELATIONS.map((r) => ({ label: r, value: r }))} value={relation} onChange={setRelation}
           />
           <SimpleGrid cols={2} spacing="sm">
-            <TextInput label="C/o first name" value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" />
-            <TextInput label="C/o last name" value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" />
+            <TextInput label={t("bio_coFirstName")} value={coFirst} onChange={(e) => setCoFirst(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="next" />
+            <TextInput label={t("bio_coLastName")} value={coLast} onChange={(e) => setCoLast(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" />
           </SimpleGrid>
         </Stack>
       </Collapse>
@@ -215,38 +208,38 @@ export default function BioStep({
       <Divider />
       <SimpleGrid cols={2} spacing="sm">
         <TextInput
-          label="Phone number" type="tel" inputMode="numeric" value={phone}
-          onChange={(e) => setPhone(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" placeholder="10-digit mobile"
+          label={t("bio_phoneNumber")} type="tel" inputMode="numeric" value={phone}
+          onChange={(e) => setPhone(e.currentTarget.value)} onKeyDown={blurOnEnter} enterKeyHint="done" placeholder={t("bio_phonePlaceholder")}
         />
         <div>
           <Text size="sm" fw={500} mb={6}>
-            <Group gap={6} component="span"><DeviceMobile size={16} /> Smartphone?</Group>
+            <Group gap={6} component="span"><DeviceMobile size={16} /> {t("bio_smartphoneQuestion")}</Group>
           </Text>
           <SegmentedControl
             fullWidth value={smartphone} onChange={setSmartphone}
-            data={[{ label: "Yes", value: "yes" }, { label: "No", value: "no" }]}
+            data={[{ label: t("common_yes"), value: "yes" }, { label: t("common_no"), value: "no" }]}
           />
         </div>
       </SimpleGrid>
 
       <Divider />
       <div>
-        <Text size="sm" fw={500} mb={6}>Financial capacity</Text>
+        <Text size="sm" fw={500} mb={6}>{t("field_financialCapacity")}</Text>
         <SegmentedControl
           fullWidth value={financialCapacity} onChange={(v) => setFinancialCapacity(v as FinancialCapacity)}
-          data={FINANCIAL_CAPACITY_OPTS}
+          data={financialCapacityOpts(t)}
         />
       </div>
       <div>
-        <Text size="sm" fw={500} mb={6}>Landholding</Text>
+        <Text size="sm" fw={500} mb={6}>{t("field_landholding")}</Text>
         <SegmentedControl
           fullWidth value={landholding} onChange={(v) => setLandholding(v as Landholding)}
-          data={LANDHOLDING_OPTS}
+          data={landholdingOpts(t)}
         />
       </div>
       <Select
-        label="Adoption level" placeholder="Select" clearable
-        data={ADOPTION_LEVEL_OPTS} value={adoptionLevel || null}
+        label={t("field_adoptionLevel")} placeholder={t("bio_selectPlaceholder")} clearable
+        data={adoptionLevelOpts(t)} value={adoptionLevel || null}
         onChange={(v) => setAdoptionLevel((v as AdoptionLevel) || "")}
         comboboxProps={{ withinPortal: true }}
       />
@@ -255,19 +248,19 @@ export default function BioStep({
       <SeedsInput value={seeds} onChange={setSeeds} />
 
       <Textarea
-        label={<Group gap={6} component="span"><NotePencil size={16} /> Note (optional)</Group>}
-        placeholder="Any note from the onboarding team…"
+        label={<Group gap={6} component="span"><NotePencil size={16} /> {t("bio_noteLabel")}</Group>}
+        placeholder={t("bio_notePlaceholder")}
         value={note} onChange={(e) => setNote(e.currentTarget.value)}
         autosize minRows={2} maxRows={5}
       />
 
       <Group grow>
         <Button size="md" leftSection={<FloppyDisk size={18} />} onClick={save} loading={saving} disabled={!canSave}>
-          Save bio data
+          {t("bio_saveBioData")}
         </Button>
         {farmer.bioComplete && (
           <Button size="md" variant="light" color="green" rightSection={<ArrowRight size={18} weight="bold" />} onClick={onContinue}>
-            Continue
+            {t("common_continue")}
           </Button>
         )}
       </Group>

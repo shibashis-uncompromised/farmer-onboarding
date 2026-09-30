@@ -4,6 +4,9 @@
 // Note: villages can share an idCode (e.g. Belua 1 & 2 → BELU) — they then
 // share a single numbering sequence.
 
+import type { Language } from "./i18n/LanguageContext";
+import { getStateLabel, getDistrictLabel, getVillageLabel, getBlockLabel } from "./dataLabels";
+
 export interface Village {
   code: string;     // unique key, e.g. "001"
   name: string;
@@ -43,6 +46,34 @@ export const DISTRICTS_BY_STATE: Record<string, string[]> = {
   "Madhya Pradesh": ["Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Mandla","Mandsaur","Morena","Narsimhapur","Neemuch","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha"],
   "Gujarat": ["Ahmadabad","Amreli","Anand","Banas Kantha","Bharuch","Bhavnagar","Dohad","Gandhinagar","Jamnagar","Junagadh","Kachchh","Kheda","Mahesana","Narmada","Navsari","Panch Mahals","Patan","Porbandar","Rajkot","Sabar Kantha","Surat","Surendranagar","Tapi","The Dangs","Vadodara","Valsad"],
 };
+
+// ---- Translated display labels ----
+// Neoperk-facing values above stay in English (state/district enums, village
+// `name`/`block` fields) — only what's rendered on screen changes with the
+// language toggle. Backed by src/lib/dataLabels.ts + src/lib/i18n/static/hi.ts.
+
+export function stateLabel(raw: string | null | undefined, language: Language): string {
+  return getStateLabel(raw, language);
+}
+export const stateOpts = (language: Language) => NEOPERK_STATES.map((value) => ({ value, label: stateLabel(value, language) }));
+
+export function districtLabel(raw: string | null | undefined, language: Language): string {
+  return getDistrictLabel(raw, language);
+}
+export const districtOpts = (state: string, language: Language) =>
+  (DISTRICTS_BY_STATE[state] || []).map((value) => ({ value, label: districtLabel(value, language) }));
+
+// Preset villages only — field-created villages have no translation on file
+// (there's no way to know a name typed in the field ahead of time), so
+// they're shown exactly as the field staff typed them, same as any other
+// free text in this app (getVillageLabel/getBlockLabel fall back to the raw
+// value unchanged when it isn't in the static dictionary).
+export function villageNameLabel(v: Village, language: Language): string {
+  return getVillageLabel(v.name, language);
+}
+export function villageBlockLabel(v: Village, language: Language): string {
+  return getBlockLabel(v.block, language);
+}
 
 // ---- User-created villages (dynamic) ----
 // Preset villages above are static; villages created in the field are held in a

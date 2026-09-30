@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet-draw";
 import type { BoundaryPoint } from "@/lib/types";
 import { ESRI_ATTRIBUTION, ESRI_TILE_URL } from "@/lib/offlineTiles";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 const FALLBACK_CENTER: [number, number] = [23.0451, 72.5321];
 const DEFAULT_ZOOM = 17;
@@ -29,6 +30,7 @@ function layerToPoints(layer: L.Layer): BoundaryPoint[] {
 }
 
 export default function BoundaryDrawMap({ points, onChange, centerHint }: Props) {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
@@ -117,7 +119,7 @@ export default function BoundaryDrawMap({ points, onChange, centerHint }: Props)
     <Box>
       <div ref={containerRef} style={{ height: 320, width: "100%", borderRadius: 8, overflow: "hidden" }} />
       <Text size="xs" c="dimmed" mt={6}>
-        Tap the polygon tool, trace the boundary, then tap the first point to close it. Cached tiles are used automatically when offline.
+        {t("boundaryMap_hint")}
       </Text>
     </Box>
   );
