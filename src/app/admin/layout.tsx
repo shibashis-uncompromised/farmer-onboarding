@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  AppShell, Avatar, Burger, Center, Group, Image, Loader, Menu, NavLink,
-  Text, UnstyledButton,
+  ActionIcon, AppShell, Avatar, Burger, Button, Center, Group, Image, Loader, Menu, NavLink,
+  Text, Tooltip, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { CaretDown, CheckCircle, ClockCounterClockwise, Plant, SignOut, UsersThree } from "@phosphor-icons/react";
+import { CaretDown, CheckCircle, ClockCounterClockwise, CloudArrowUp, House, Plant, SignOut, UsersThree } from "@phosphor-icons/react";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/LanguageContext";
@@ -20,6 +20,7 @@ const NAV_ITEMS: { labelKey: TranslationKey; href: string; icon: typeof UsersThr
   { labelKey: "adminLayout_navApprovals", href: "/admin/approvals/", icon: CheckCircle },
   { labelKey: "adminLayout_navRecords", href: "/admin/records/", icon: Plant },
   { labelKey: "adminLayout_navVersions", href: "/admin/versions/", icon: ClockCounterClockwise },
+  { labelKey: "adminLayout_navPublish", href: "/admin/publish/", icon: CloudArrowUp },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -68,6 +69,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Group>
 
           <Group gap="sm" wrap="nowrap">
+            {/* Way back to the field onboarding app (admins can onboard too). */}
+            <Button
+              variant="light" color="green" size="xs" visibleFrom="xs"
+              leftSection={<House size={16} />}
+              onClick={() => router.push("/home/")}
+            >
+              {t("adminLayout_backToOnboarding")}
+            </Button>
+            <Tooltip label={t("adminLayout_backToOnboarding")}>
+              <ActionIcon
+                variant="light" color="green" size="lg" hiddenFrom="xs"
+                aria-label={t("adminLayout_backToOnboarding")}
+                onClick={() => router.push("/home/")}
+              >
+                <House size={18} />
+              </ActionIcon>
+            </Tooltip>
             <LanguageToggle size="xs" />
             <Menu shadow="md" width={200} position="bottom-end">
               <Menu.Target>
@@ -82,6 +100,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </UnstyledButton>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item leftSection={<House size={16} />} onClick={() => router.push("/home/")}>
+                  {t("adminLayout_backToOnboarding")}
+                </Menu.Item>
+                <Menu.Divider />
                 <Menu.Item
                   color="red"
                   leftSection={<SignOut size={16} />}

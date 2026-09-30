@@ -206,3 +206,127 @@ export const apiApproveAllEntityVersions = (
   filters: ApproveAllFilters = {}
 ): Promise<ApproveAllResult> =>
   req("/api/admin/entity-versions/approve-all", { method: "POST", body: JSON.stringify({ token, ...filters }) });
+
+// ---- Admin: Publish to TerraOS ----
+// Onboarding backend → uc-core (TerraOS). Separate from apiSync/apiPull,
+// which move data between this device and the onboarding backend.
+export type PublishEntityType = "village" | "farmer" | "farm" | "plot";
+export type PublishChange = "new" | "changed" | "deleted";
+export type PublishStatus =
+  | "would_create" | "would_update" | "would_delete"
+  | "created" | "updated" | "deleted" | "skipped"
+  | "conflict" | "error";
+
+export interface PublishConflict {
+  kind: "name" | "modified" | "missing";
+  message: string;
+  candidates?: { id: string; label: string }[];
+  terraos?: Record<string, any>;
+}
+
+export interface PublishItem {
+  type: PublishEntityType;
+  sourceId: string;
+  label: string;
+  change?: PublishChange;
+  status: PublishStatus;
+  conflict: PublishConflict | null;
+  error: string | null;
+  warnings: string[];
+  onboarding?: Record<string, any>;
+  /** The record as sent (or, in a preview, as it will be sent) to TerraOS. */
+  sent?: {
+    type: PublishEntityType;
+    sourceId: string;
+    deleted?: boolean;
+    data: Record<string, any>;
+    source?: Record<string, any>;
+    photos?: { mediaId: string; mimeType?: string }[];
+    resolution?: PublishResolution;
+  } | null;
+  targetId?: string | null;
+  /** Run history only: where this record stands right now. */
+  current?: PublishCurrent | null;
+  /** Preview only: how this change can be undone in onboarding if TerraOS won't take it. */
+  revert?: "discard" | "restore" | null;
+}
+
+export type PublishCurrentState =
+  | "up_to_date" | "changed" | "conflict" | "error" | "skipped"
+  | "deleted" | "discarded" | "not_published" | "gone";
+
+export interface PublishCurrent {
+  now: PublishCurrentState;
+  inTerraos: boolean;
+  targetId: string | null;
+  publishedAt: string | null;
+  revert: { action: "discard" | "restore"; by: string; at: string } | null;
+}
+
+export type PublishResolution = "overwrite" | "create_new" | "skip" | { linkTo: string };
+
+export interface PublishRun {
+  id: number;
+  started_by: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "completed" | "failed";
+  counts: Partial<Record<PublishStatus, number>> | null;
+  results: PublishItem[] | null;
+  error: string | null;
+  progress?: PublishProgress | null;
+}
+
+// Preview and publish run as background jobs on the server (they can take
+// minutes — longer than CloudFront waits), so these start one and poll it.
+export type PublishProgress = { done: number; total: number };
+const POLL_MS = 2000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function apiPublishPreview(
+  token: string,
+  onProgress?: (p: PublishProgress) => void
+): Promise<{ upToDate: number; counts: Partial<Record<PublishStatus, number>>; items: PublishItem[] }> {
+  const { jobId } = await req("/api/admin/publish/preview", { method: "POST", body: JSON.stringify({ token }) });
+  for (;;) {
+    await sleep(POLL_MS);
+    const j = await req(`/api/admin/publish/preview/${jobId}`, { method: "POST", body: JSON.stringify({ token }) });
+    if (j.progress) onProgress?.(j.progress);
+    if (j.status === "done") return j;
+    if (j.status === "failed") throw new Error(j.error || "Check failed");
+  }
+}
+
+export async function apiPublishRun(
+  token: string,
+  resolutions: Record<string, PublishResolution>,
+  onProgress?: (p: PublishProgress) => void
+): Promise<PublishRun> {
+  const { runId } = await req("/api/admin/publish/run", { method: "POST", body: JSON.stringify({ token, resolutions }) });
+  for (;;) {
+    await sleep(POLL_MS);
+    const run: PublishRun = await req(`/api/admin/publish/runs/${runId}/status`, { method: "POST", body: JSON.stringify({ token }) });
+    if (run.progress) onProgress?.(run.progress);
+    if (run.status === "completed") return run;
+    if (run.status === "failed") throw new Error(run.error || "Publish failed");
+  }
+}
+
+export const apiPublishRuns = (token: string, limit = 20): Promise<{ configured: boolean; runs: PublishRun[] }> =>
+  req("/api/admin/publish/runs", { method: "POST", body: JSON.stringify({ token, limit }) });
+
+export const apiPublishRunItems = (
+  token: string,
+  runId: number,
+  filters: { status?: string; type?: string; search?: string; limit?: number; offset?: number } = {}
+): Promise<{ run: PublishRun; total: number; items: PublishItem[] }> =>
+  req(`/api/admin/publish/runs/${runId}/items`, { method: "POST", body: JSON.stringify({ token, ...filters }) });
+
+// Undo a pending change in ONBOARDING (TerraOS untouched): "discard" soft-
+// deletes a never-published record; "restore" puts it back to what TerraOS has.
+export const apiPublishRevert = (
+  token: string,
+  type: PublishEntityType,
+  sourceId: string
+): Promise<{ ok: true; action: "discard" | "restore" }> =>
+  req("/api/admin/publish/revert", { method: "POST", body: JSON.stringify({ token, type, sourceId }) }, 60000);
