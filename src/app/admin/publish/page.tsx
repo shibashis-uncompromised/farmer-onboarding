@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert, Badge, Button, Center, Group, Loader, Paper, Select,
+  Alert, Badge, Button, Center, Checkbox, Group, Loader, Paper, Select,
   Stack, Table, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
-  ArrowCounterClockwise, ArrowsClockwise, CloudArrowUp, ClipboardText, Info, Trash, WarningCircle,
+  ArrowCounterClockwise, ArrowsClockwise, CloudArrowUp, ClipboardText, Info, SkipForward, Trash, WarningCircle,
 } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
@@ -48,9 +48,36 @@ const COMPARE_FIELDS: Record<PublishEntityType, { label: string; ob: string; tos
   ],
   farm: [{ label: "Name", ob: "name", tos: "name" }, { label: "Area (acres)", ob: "areaAcres", tos: "area" }],
   plot: [{ label: "Code", ob: "code", tos: "code" }, { label: "Name", ob: "name", tos: "name" }],
+  soil_sample: [
+    { label: "Code", ob: "code", tos: "code" },
+    { label: "Previous crop", ob: "previousCrop", tos: "previousCrop" },
+    { label: "Neoperk sample ID", ob: "neoperkSampleId", tos: "neoperkSampleId" },
+  ],
+  soil_texture_test: [
+    { label: "Clay %", ob: "clayPct", tos: "clayPct" },
+    { label: "Sand %", ob: "sandPct", tos: "sandPct" },
+    { label: "Silt %", ob: "siltPct", tos: "siltPct" },
+  ],
+  water_tds_test: [{ label: "TDS (ppm)", ob: "tdsPpm", tos: "tdsPpm" }],
+  cultivation: [
+    { label: "Crop", ob: "crop", tos: "crop" },
+    { label: "Variety", ob: "variety", tos: "variety" },
+    { label: "Crop plan", ob: "cropPlan", tos: "cropPlan" },
+    { label: "Sowing date", ob: "startDate", tos: "startDate" },
+    { label: "End date", ob: "endDate", tos: "endDate" },
+  ],
 };
 
 const itemKey = publishItemKey;
+
+// The way out for a record TerraOS can't take (see backend /revert).
+const REVERT_META = {
+  discard: { label: "adminPublish_revertDiscard", title: "adminPublish_revertDiscardTitle", text: "adminPublish_revertDiscardText", done: "adminPublish_revertDoneDiscard", color: "red" },
+  restore: { label: "adminPublish_revertRestore", title: "adminPublish_revertRestoreTitle", text: "adminPublish_revertRestoreText", done: "adminPublish_revertDoneRestore", color: "orange" },
+  skip: { label: "adminPublish_revertSkip", title: "adminPublish_revertSkipTitle", text: "adminPublish_revertSkipText", done: "adminPublish_revertDoneSkip", color: "gray" },
+} as const;
+const revertIcon = (a: keyof typeof REVERT_META, size: number) =>
+  a === "discard" ? <Trash size={size} /> : a === "restore" ? <ArrowCounterClockwise size={size} /> : <SkipForward size={size} />;
 const show = (v: unknown) => {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "number") return String(Math.round(v * 10000) / 10000);
@@ -77,6 +104,9 @@ export default function AdminPublishPage() {
   const [publishing, setPublishing] = useState(false);
   const [openRun, setOpenRun] = useState<PublishRun | null>(null);
   const [openItem, setOpenItem] = useState<PublishItem | null>(null);
+  // Records ticked for "Publish selected"; confirmOnly = the confirm dialog is for the selection.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmOnly, setConfirmOnly] = useState(false);
   const [progress, setProgress] = useState<PublishProgress | null>(null);
   const [reverting, setReverting] = useState<PublishItem | null>(null);
   const [revertBusy, setRevertBusy] = useState(false);
@@ -104,6 +134,8 @@ export default function AdminPublishPage() {
       setProgress(null);
       const r = await apiPublishPreview(session.token, setProgress);
       setPreview({ upToDate: r.upToDate, items: r.items });
+      // Keep only selections that are still pending and publishable.
+      setSelected((prev) => new Set([...prev].filter((k) => r.items.some((i) => itemKey(i) === k && i.status !== "error"))));
       // Keep decisions only for records that are still conflicts.
       setResolutions((prev) => {
         const next: Record<string, PublishResolution> = {};
@@ -134,13 +166,17 @@ export default function AdminPublishPage() {
     [filter, items],
   );
 
+  // Rows that can be ticked (errors can't be published until fixed or reverted).
+  const selectableVisible = visible.filter((i) => i.status !== "error");
+
   const publish = async () => {
     const session = getSession();
     if (!session) return;
     setPublishing(true);
     try {
       setProgress(null);
-      const r = await apiPublishRun(session.token, resolutions, setProgress);
+      const r = await apiPublishRun(session.token, resolutions, setProgress, confirmOnly ? [...selected] : undefined);
+      setSelected(new Set());
       const c = r.counts || {};
       notifications.show({
         color: (c.conflict || 0) + (c.error || 0) > 0 ? "yellow" : "green",
@@ -171,7 +207,7 @@ export default function AdminPublishPage() {
       const r = await apiPublishRevert(session.token, reverting.type, reverting.sourceId);
       notifications.show({
         color: "green",
-        message: t(r.action === "discard" ? "adminPublish_revertDoneDiscard" : "adminPublish_revertDoneRestore", { label: reverting.label }),
+        message: t(REVERT_META[r.action].done, { label: reverting.label }),
       });
       setReverting(null);
       await check();
@@ -215,10 +251,17 @@ export default function AdminPublishPage() {
           <Button
             color="green" leftSection={<CloudArrowUp size={16} />}
             disabled={!configured || !preview || checking || sendCount + skipping === 0}
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => { setConfirmOnly(false); setConfirmOpen(true); }}
           >
             {t("adminPublish_publishAll")}{preview && sendCount > 0 ? ` (${sendCount})` : ""}
           </Button>
+          {selected.size > 0 && (
+            <Button color="green" variant="light" leftSection={<CloudArrowUp size={16} />}
+              disabled={!configured || checking || publishing}
+              onClick={() => { setConfirmOnly(true); setConfirmOpen(true); }}>
+              {t("adminPublish_publishSelected", { n: selected.size })}
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -298,6 +341,22 @@ export default function AdminPublishPage() {
               <Table verticalSpacing="sm" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th w={36}>
+                      <Checkbox
+                        aria-label={t("adminPublish_selectAll")}
+                        checked={selectableVisible.length > 0 && selectableVisible.every((i) => selected.has(itemKey(i)))}
+                        indeterminate={selectableVisible.some((i) => selected.has(itemKey(i))) && !selectableVisible.every((i) => selected.has(itemKey(i)))}
+                        disabled={selectableVisible.length === 0}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            for (const i of selectableVisible) on ? next.add(itemKey(i)) : next.delete(itemKey(i));
+                            return next;
+                          });
+                        }}
+                      />
+                    </Table.Th>
                     <Table.Th>{t("adminPublish_colRecord")}</Table.Th>
                     <Table.Th>{t("adminPublish_colChange")}</Table.Th>
                     <Table.Th>{t("adminPublish_colResult")}</Table.Th>
@@ -306,7 +365,27 @@ export default function AdminPublishPage() {
                 </Table.Thead>
                 <Table.Tbody>
                   {visible.map((i) => (
-                    <Table.Tr key={itemKey(i)} style={{ cursor: "pointer" }} onClick={() => setOpenItem(i)}>
+                    <Table.Tr key={itemKey(i)} style={{ cursor: "pointer" }} onClick={() => setOpenItem(i)}
+                      bg={selected.has(itemKey(i)) ? "var(--mantine-color-green-light)" : undefined}>
+                      <Table.Td onClick={(e) => e.stopPropagation()} style={{ cursor: "default" }}>
+                        <Tooltip label={t("adminPublish_cantSelectError")} disabled={i.status !== "error"}>
+                          <span>
+                            <Checkbox
+                              aria-label={i.label}
+                              disabled={i.status === "error"}
+                              checked={selected.has(itemKey(i))}
+                              onChange={(e) => {
+                                const on = e.currentTarget.checked;
+                                setSelected((prev) => {
+                                  const next = new Set(prev);
+                                  on ? next.add(itemKey(i)) : next.delete(itemKey(i));
+                                  return next;
+                                });
+                              }}
+                            />
+                          </span>
+                        </Tooltip>
+                      </Table.Td>
                       <Table.Td>
                         <Group gap={6} wrap="nowrap">
                           <Badge color={TYPE_COLOR[i.type]} variant="light" radius="sm" style={{ flexShrink: 0 }}>{t(TYPE_LABEL_KEY[i.type])}</Badge>
@@ -350,12 +429,12 @@ export default function AdminPublishPage() {
                           </Group>
                         ) : i.status === "error" && i.revert ? (
                           <Button
-                            size="xs" variant="light" color={i.revert === "discard" ? "red" : "orange"}
-                            leftSection={i.revert === "discard" ? <Trash size={14} /> : <ArrowCounterClockwise size={14} />}
+                            size="xs" variant="light" color={REVERT_META[i.revert].color}
+                            leftSection={revertIcon(i.revert, 14)}
                             disabled={publishing}
                             onClick={() => setReverting(i)}
                           >
-                            {t(i.revert === "discard" ? "adminPublish_revertDiscard" : "adminPublish_revertRestore")}
+                            {t(REVERT_META[i.revert].label)}
                           </Button>
                         ) : (
                           <Text size="sm" c="dimmed">—</Text>
@@ -430,13 +509,15 @@ export default function AdminPublishPage() {
         withCloseButton={!publishing}
       >
         <Stack gap="md">
-          <Text size="sm">{t("adminPublish_confirmText", { n: sendCount })}</Text>
+          <Text size="sm">
+            {confirmOnly ? t("adminPublish_confirmSelected", { n: selected.size }) : t("adminPublish_confirmText", { n: sendCount })}
+          </Text>
           {skipping > 0 && <Text size="sm" c="dimmed">{t("adminPublish_confirmSkipped", { n: skipping })}</Text>}
           {held > 0 && <Text size="sm" c="orange">{t("adminPublish_confirmHeld", { n: held })}</Text>}
           <Group justify="flex-end" gap="sm">
             <Button variant="default" disabled={publishing} onClick={() => setConfirmOpen(false)}>{t("common_cancel")}</Button>
             <Button color="green" leftSection={<CloudArrowUp size={16} />} loading={publishing} onClick={publish}>
-              {t("adminPublish_publishAll")}
+              {confirmOnly ? t("adminPublish_publishSelected", { n: selected.size }) : t("adminPublish_publishAll")}
             </Button>
           </Group>
         </Stack>
@@ -482,23 +563,23 @@ export default function AdminPublishPage() {
       <AppModal
         opened={!!reverting}
         onClose={() => { if (!revertBusy) setReverting(null); }}
-        title={reverting ? t(reverting.revert === "discard" ? "adminPublish_revertDiscardTitle" : "adminPublish_revertRestoreTitle", { label: reverting.label }) : ""}
+        title={reverting?.revert ? t(REVERT_META[reverting.revert].title, { label: reverting.label }) : ""}
         size="sm"
         closeOnClickOutside={!revertBusy}
         withCloseButton={!revertBusy}
       >
-        {reverting && (
+        {reverting?.revert && (
           <Stack gap="md">
             {reverting.error && <Alert color="red" icon={<WarningCircle size={18} />}>{reverting.error}</Alert>}
-            <Text size="sm">{t(reverting.revert === "discard" ? "adminPublish_revertDiscardText" : "adminPublish_revertRestoreText")}</Text>
+            <Text size="sm">{t(REVERT_META[reverting.revert].text)}</Text>
             <Text size="xs" c="dimmed">{t("adminPublish_revertLogged")}</Text>
             <Group justify="flex-end" gap="sm">
               <Button variant="default" disabled={revertBusy} onClick={() => setReverting(null)}>{t("common_cancel")}</Button>
               <Button
-                color={reverting.revert === "discard" ? "red" : "orange"} loading={revertBusy} onClick={runRevert}
-                leftSection={reverting.revert === "discard" ? <Trash size={16} /> : <ArrowCounterClockwise size={16} />}
+                color={REVERT_META[reverting.revert].color} loading={revertBusy} onClick={runRevert}
+                leftSection={revertIcon(reverting.revert, 16)}
               >
-                {t(reverting.revert === "discard" ? "adminPublish_revertDiscard" : "adminPublish_revertRestore")}
+                {t(REVERT_META[reverting.revert].label)}
               </Button>
             </Group>
           </Stack>

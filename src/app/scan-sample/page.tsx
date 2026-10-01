@@ -77,8 +77,12 @@ function ScanSampleInner() {
         farmerName = `${farmer.firstName || ""} ${farmer.lastName || ""}`.trim();
         coName = `${farmer.coFirstName || ""} ${farmer.coLastName || ""}`.trim();
       }
-      // best-effort upcoming crop = the farm's first non-deleted plot crop
-      if (sample.farmId) {
+      // upcoming crop = the sampled plot's crop; older farm-level samples fall
+      // back to the farm's first non-deleted plot crop
+      const samplePlot = sample.plotId ? await db.plots.get(sample.plotId) : undefined;
+      if (samplePlot?.crop) {
+        crop = samplePlot.crop;
+      } else if (sample.farmId) {
         const plots = (await db.plots.where("farmId").equals(sample.farmId).toArray()).filter((p) => !p.deleted);
         crop = plots.find((p) => p.crop)?.crop || "";
       }

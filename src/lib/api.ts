@@ -210,7 +210,9 @@ export const apiApproveAllEntityVersions = (
 // ---- Admin: Publish to TerraOS ----
 // Onboarding backend → uc-core (TerraOS). Separate from apiSync/apiPull,
 // which move data between this device and the onboarding backend.
-export type PublishEntityType = "village" | "farmer" | "farm" | "plot";
+export type PublishEntityType =
+  | "village" | "farmer" | "farm" | "plot" | "cultivation"
+  | "soil_sample" | "soil_texture_test" | "water_tds_test";
 export type PublishChange = "new" | "changed" | "deleted";
 export type PublishStatus =
   | "would_create" | "would_update" | "would_delete"
@@ -248,7 +250,7 @@ export interface PublishItem {
   /** Run history only: where this record stands right now. */
   current?: PublishCurrent | null;
   /** Preview only: how this change can be undone in onboarding if TerraOS won't take it. */
-  revert?: "discard" | "restore" | null;
+  revert?: "discard" | "restore" | "skip" | null;
 }
 
 export type PublishCurrentState =
@@ -260,7 +262,7 @@ export interface PublishCurrent {
   inTerraos: boolean;
   targetId: string | null;
   publishedAt: string | null;
-  revert: { action: "discard" | "restore"; by: string; at: string } | null;
+  revert: { action: "discard" | "restore" | "skip"; by: string; at: string } | null;
 }
 
 export type PublishResolution = "overwrite" | "create_new" | "skip" | { linkTo: string };
@@ -300,9 +302,11 @@ export async function apiPublishPreview(
 export async function apiPublishRun(
   token: string,
   resolutions: Record<string, PublishResolution>,
-  onProgress?: (p: PublishProgress) => void
+  onProgress?: (p: PublishProgress) => void,
+  /** Publish only these "type:sourceId" keys (+ parents they need); omit for all. */
+  only?: string[]
 ): Promise<PublishRun> {
-  const { runId } = await req("/api/admin/publish/run", { method: "POST", body: JSON.stringify({ token, resolutions }) });
+  const { runId } = await req("/api/admin/publish/run", { method: "POST", body: JSON.stringify({ token, resolutions, only }) });
   for (;;) {
     await sleep(POLL_MS);
     const run: PublishRun = await req(`/api/admin/publish/runs/${runId}/status`, { method: "POST", body: JSON.stringify({ token }) });
@@ -328,5 +332,73 @@ export const apiPublishRevert = (
   token: string,
   type: PublishEntityType,
   sourceId: string
-): Promise<{ ok: true; action: "discard" | "restore" }> =>
+): Promise<{ ok: true; action: "discard" | "restore" | "skip" }> =>
   req("/api/admin/publish/revert", { method: "POST", body: JSON.stringify({ token, type, sourceId }) }, 60000);
+
+// ---- Admin: edit any record directly (applies immediately, no approval) ----
+// `changes` may hold any editable field — names, phone, farm/plot name, survey
+// fields, crop… — null or "" clears it. Versioned fields become a new current
+// version, so Version History still shows the edit.
+export const apiAdminUpdateRecord = (
+  token: string,
+  entityType: EntityType,
+  entityId: string,
+  changes: Record<string, any>
+): Promise<{ ok: true; record: Record<string, any> }> =>
+  req("/api/admin/records/update", { method: "POST", body: JSON.stringify({ token, entityType, entityId, changes }) });
+
+// ---- Admin: plot cultivations (admin-only; supervisors never see them) ----
+export interface Cultivation {
+  id: string;
+  plotId: string;
+  farmId: string;
+  farmerId: string | null;
+  crop: string;
+  variety: string;
+  cropPlan: string;
+  startDate: string;       // YYYY-MM-DD (sowing)
+  endDate: string | null;  // set when the season is closed
+  notes: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export type CultivationInput = Pick<Cultivation, "crop" | "variety" | "cropPlan" | "startDate"> & {
+  endDate?: string | null;
+  notes?: string | null;
+};
+
+export const apiListCultivations = (token: string, filter: { plotId?: string; farmId?: string } = {}): Promise<{ cultivations: Cultivation[] }> =>
+  req("/api/admin/cultivations/list", { method: "POST", body: JSON.stringify({ token, ...filter }) });
+
+export const apiCreateCultivation = (token: string, plotId: string, body: CultivationInput): Promise<{ cultivation: Cultivation }> =>
+  req("/api/admin/cultivations/create", { method: "POST", body: JSON.stringify({ token, plotId, ...body }) });
+
+export const apiUpdateCultivation = (token: string, id: string, body: Partial<CultivationInput>): Promise<{ cultivation: Cultivation }> =>
+  req(`/api/admin/cultivations/${encodeURIComponent(id)}/update`, { method: "POST", body: JSON.stringify({ token, ...body }) });
+
+export const apiDeleteCultivation = (token: string, id: string): Promise<{ ok: true }> =>
+  req(`/api/admin/cultivations/${encodeURIComponent(id)}/delete`, { method: "POST", body: JSON.stringify({ token }) });
+
+// ---- Admin: crop plans (per farm; must be defined before cultivations) ----
+// name = "<Season> <Year> <Farm ID>", built by the server.
+export interface CropPlan {
+  id: number;
+  farmId: string;
+  season: string;
+  year: number;
+  name: string;
+  createdBy: string | null;
+  createdAt: string;
+  cultivations: number;  // how many (non-deleted) cultivations use it
+}
+
+export const apiListCropPlans = (token: string, farmId?: string): Promise<{ cropPlans: CropPlan[] }> =>
+  req("/api/admin/crop-plans/list", { method: "POST", body: JSON.stringify({ token, farmId }) });
+
+export const apiCreateCropPlan = (token: string, farmId: string, season: string, year: number): Promise<{ cropPlan: CropPlan }> =>
+  req("/api/admin/crop-plans/create", { method: "POST", body: JSON.stringify({ token, farmId, season, year }) });
+
+export const apiDeleteCropPlan = (token: string, id: number): Promise<{ ok: true }> =>
+  req(`/api/admin/crop-plans/${id}/delete`, { method: "POST", body: JSON.stringify({ token }) });

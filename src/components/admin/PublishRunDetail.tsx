@@ -85,7 +85,7 @@ export default function PublishRunDetail({ run, onClose }: { run: PublishRun | n
                 size="xs" w={130} allowDeselect={false} value={type}
                 onChange={(v) => { setType(v || "all"); setPage(1); }}
                 data={[{ value: "all", label: t("adminPublish_allTypes") },
-                  ...(["village", "farmer", "farm", "plot"] as const).map((x) => ({ value: x, label: t(PUBLISH_TYPE_LABEL_KEY[x]) }))]}
+                  ...(["village", "farmer", "farm", "plot", "cultivation", "soil_sample", "soil_texture_test", "water_tds_test"] as const).map((x) => ({ value: x, label: t(PUBLISH_TYPE_LABEL_KEY[x]) }))]}
               />
               <TextInput
                 size="xs" w={220} leftSection={<MagnifyingGlass size={14} />}

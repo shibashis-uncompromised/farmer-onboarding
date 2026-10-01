@@ -71,6 +71,18 @@ export class AppDB extends Dexie {
       waterTDSTests: "id, plotId, farmId, farmerId, synced, createdAt",
       villages: "code, createdBy, synced, updatedAt",
     });
+    // v7: soil samples are taken per PLOT now — index plotId. Additive; older
+    // samples simply have no plotId (shown on the farm as history).
+    this.version(7).stores({
+      farmers: "id, villageCode, bioComplete, updatedAt, lastName, firstName",
+      farms: "id, farmerId, villageCode, updatedAt",
+      plots: "id, farmId, farmerId, updatedAt",
+      media: "id, synced, createdAt",
+      soilSamples: "id, plotId, farmId, farmerId, synced, createdAt",
+      soilTextureTests: "id, plotId, farmId, farmerId, synced, createdAt",
+      waterTDSTests: "id, plotId, farmId, farmerId, synced, createdAt",
+      villages: "code, createdBy, synced, updatedAt",
+    });
   }
 }
 

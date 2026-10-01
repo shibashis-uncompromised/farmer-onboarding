@@ -7,8 +7,14 @@ import { ENTITY_COLOR, ENTITY_LABEL_KEY } from "./dynamicFieldMeta";
 export const PUBLISH_TYPE_LABEL_KEY: Record<PublishEntityType, TranslationKey> = {
   village: "adminPublish_entityVillage",
   ...ENTITY_LABEL_KEY,
+  cultivation: "adminPublish_entityCultivation",
+  soil_sample: "adminPublish_entitySoilSample",
+  soil_texture_test: "adminPublish_entitySoilTextureTest",
+  water_tds_test: "adminPublish_entityWaterTdsTest",
 };
-export const PUBLISH_TYPE_COLOR: Record<PublishEntityType, string> = { village: "orange", ...ENTITY_COLOR };
+export const PUBLISH_TYPE_COLOR: Record<PublishEntityType, string> = { village: "orange", ...ENTITY_COLOR, cultivation: "lime",
+  soil_sample: "grape", soil_texture_test: "orange", water_tds_test: "cyan",
+};
 
 export const PUBLISH_STATUS_META: Record<PublishStatus, { key: TranslationKey; color: string }> = {
   would_create: { key: "adminPublish_statusWouldCreate", color: "green" },
@@ -51,6 +57,10 @@ const FIELD_LABELS: Record<string, string> = {
   villageSourceId: "Village", farmerSourceId: "Farmer", farmSourceId: "Farm",
   firstName: "First name", lastName: "Last name", phone: "Phone", careOf: "Care of",
   lat: "Latitude", lng: "Longitude", boundary: "Boundary", areaAcres: "Area (acres)", code: "Code",
+  plotSourceId: "Plot", collectedAt: "Collected at", previousCrop: "Previous crop",
+  neoperkSampleId: "Neoperk sample ID", neoperkSubmittedAt: "Sent to Neoperk", testedAt: "Tested at",
+  clayPct: "Clay %", sandPct: "Sand %", siltPct: "Silt %", clayHeight: "Clay layer", sandHeight: "Sand layer",
+  siltHeight: "Silt layer", tdsPpm: "TDS (ppm)", accuracy: "GPS accuracy (m)", crop: "Crop", variety: "Variety", cropPlan: "Crop plan", startDate: "Sowing date", endDate: "End date",
 };
 export const publishFieldLabel = (key: string) =>
   FIELD_LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
