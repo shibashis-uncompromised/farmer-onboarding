@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import {
-  Button, Divider, Group, NumberInput, Select, Stack, Text, TextInput,
+  Button, Divider, Group, NumberInput, Select, Stack, Text, TextInput, Textarea,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
 import AutoCloseMultiSelect from "@/components/AutoCloseMultiSelect";
-import { apiDirectUpdateEntityVersion } from "@/lib/api";
+import { apiAdminUpdateRecord } from "@/lib/api";
 import { getSession } from "@/lib/session";
 import { PREVIOUS_CROPS, cropLabel } from "@/lib/crops";
 import {
@@ -51,12 +51,13 @@ interface Props {
   onSaved: () => void;
 }
 
-// Admin direct-edit for a farm's dynamic (seasonally re-examined) fields —
-// physical fieldwork measurements, farmer-reported answers, and supervisor
-// observations. Static fields (location, boundary, alias…) aren't editable
-// here. Saving applies immediately as the new `current` version.
+// Admin direct-edit for a farm: its name and note, plus every survey field
+// (physical fieldwork, farmer answers, supervisor observations). Applies
+// immediately. Location/boundary stay as captured in the field.
 export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSaved }: Props) {
   const { t, language } = useLanguage();
+  const [farmName, setFarmName] = useState("");
+  const [farmNote, setFarmNote] = useState("");
   const [treeCountBig, setTreeCountBig] = useState<number | "">("");
   const [treeCountSmall, setTreeCountSmall] = useState<number | "">("");
   const [mobileCoverage, setMobileCoverage] = useState<MobileCoverage | "">("");
@@ -85,6 +86,8 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
 
   useEffect(() => {
     if (!farm) return;
+    setFarmName(farm.name || "");
+    setFarmNote(farm.note || "");
     setTreeCountBig(farm.treeCountBig ?? "");
     setTreeCountSmall(farm.treeCountSmall ?? "");
     setMobileCoverage(farm.mobileCoverage || "");
@@ -141,8 +144,12 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
       };
       // Carry forward anything this form doesn't expose (plotSizeHectOverride)
       // untouched, so saving never silently drops a field.
-      const dynamicData = { ...baselineOf(farm), ...edited };
-      await apiDirectUpdateEntityVersion(session.token, { entityType: "farm", entityId: farm.id, dynamicData });
+      const dynamicData: Record<string, any> = { ...baselineOf(farm), ...edited };
+      // undefined = "cleared" in this form; send null so the server clears it.
+      for (const k of Object.keys(dynamicData)) if (dynamicData[k] === undefined) dynamicData[k] = null;
+      await apiAdminUpdateRecord(session.token, "farm", farm.id, {
+        name: farmName.trim() || null, note: farmNote.trim() || null, ...dynamicData,
+      });
       notifications.show({ color: "green", message: t("editFarm_savedToast", { id: farm.id }) });
       onSaved();
       onClose();
@@ -160,6 +167,11 @@ export default function EditFarmModal({ farm, farmerLabel, opened, onClose, onSa
           <Text size="sm" c="dimmed">
             {t("editFarm_metaLine", { prefix: farmerLabel ? `${farmerLabel} · ` : "", village: farm.villageCode })}
           </Text>
+
+          <TextInput label={t("admin_farmName")} placeholder={farm.alias || farm.id}
+            value={farmName} onChange={(e) => setFarmName(e.currentTarget.value)} />
+          <Textarea label={t("admin_note")} autosize minRows={1} maxRows={4}
+            value={farmNote} onChange={(e) => setFarmNote(e.currentTarget.value)} />
 
           <Divider label={t("farms_physicalFieldwork")} labelPosition="left" />
           <Group grow>

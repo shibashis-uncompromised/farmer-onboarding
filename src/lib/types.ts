@@ -90,6 +90,7 @@ export interface PreviousCropProduction {
 export interface Farm {
   id: string;            // RJ{village}F{seq}  e.g. RJ001F001
   alias?: string;        // sanitized sequential id per village (F001…); see farm-aliases/ map
+  name?: string;         // display name — set by admin (falls back to alias, then id)
   farmerId: string;
   villageCode: string;
   photoId: string | null;       // first/primary photo — kept for back-compat & thumbnails
@@ -149,14 +150,17 @@ export interface BoundaryPoint {
 }
 
 export interface Plot {
-  id: string;            // {farmId}-{seq}  e.g. RJ001F001-001
+  id: string;            // {farmId}/{seq}  e.g. RJ-VELA-F001/001
   farmId: string;
   farmerId: string;
   seq: string;           // "001"
+  name?: string;         // display name — set by admin (falls back to "Plot {seq}")
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
-  crop: string;
+  // Optional: Plot 1 is created automatically (empty) with every new farm;
+  // the crop is filled in later by editing the plot.
+  crop?: string;
   sowingDate?: string;     // when the crop was sown (YYYY-MM-DD)
 
   // ---- Tests ----
@@ -220,6 +224,9 @@ export interface Media {
 export interface SoilSample {
   id: string;            // local uid
   code: string;          // scanned QR payload (soil sample code)
+  // The plot the sample was taken from. Samples recorded before plot-level
+  // sampling have no plotId — they're kept on the farm as history.
+  plotId?: string;
   farmId: string;
   farmerId: string;
   villageCode: string;

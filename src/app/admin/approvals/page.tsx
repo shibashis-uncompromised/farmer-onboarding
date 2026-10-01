@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
-  ActionIcon, Badge, Button, Center, Divider, Group, Loader, Pagination, Paper,
-  Select, Stack, Table, Text, Textarea, TextInput, Title, Tooltip,
+  ActionIcon, Badge, Button, Center, Checkbox, Divider, Group, Loader, Pagination, Paper,
+  Stack, Table, Text, Textarea, TextInput, Title, Tooltip,
 } from "@mantine/core";
-import { CheckCircle, Checks, ClipboardText, Eye, MagnifyingGlass, WarningCircle, XCircle } from "@phosphor-icons/react";
+import {
+  ArrowsClockwise, CaretDown, CaretRight, Check, CheckCircle, Checks, ClipboardText, Eye, MagnifyingGlass,
+  WarningCircle, X, XCircle,
+} from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
 import {
@@ -45,6 +48,14 @@ export default function AdminApprovalsPage() {
   const [submittedBy, setSubmittedBy] = useState("");
   const [page, setPage] = useState(1);
   const [reloadTick, setReloadTick] = useState(0);
+  // Interactive bits: pending counts per type (the filter buttons), ticked
+  // rows for bulk actions, expanded rows showing the change inline, and the
+  // row(s) currently being approved/rejected.
+  const [counts, setCounts] = useState<Record<EntityType | "all", number> | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<"approve" | "reject" | null>(null);
 
   const updateFilter = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(1); };
   const onEntityType = updateFilter<EntityType | "all">(setEntityType);
@@ -77,7 +88,73 @@ export default function AdminApprovalsPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [entityType, entityId, submittedBy, page, reloadTick]);
 
+  // Pending counts for the filter buttons (cheap: limit 1, only totals used).
+  useEffect(() => {
+    const session = getSession();
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const types: (EntityType | "all")[] = ["all", "farmer", "farm", "plot"];
+        const totals = await Promise.all(types.map((et) =>
+          apiListEntityVersions(session.token, { status: "pending", entityType: et, limit: 1 }).then((r) => r.total)));
+        if (!cancelled) setCounts(Object.fromEntries(types.map((et, i) => [et, totals[i]])) as Record<EntityType | "all", number>);
+      } catch { /* counts are a nicety — the list shows its own error */ }
+    })();
+    return () => { cancelled = true; };
+  }, [reloadTick]);
+  // Selections only make sense for rows on screen.
+  useEffect(() => { setSelected(new Set()); }, [entityType, entityId, submittedBy, page]);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const toggle = (setter: typeof setSelected, id: number) =>
+    setter((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const label = (v: EntityVersion) => `${t(ENTITY_LABEL_KEY[v.entity_type])} ${v.entity_id} v${v.version_no}`;
+
+  // One-click approve / reject from the row (no note).
+  const quick = async (v: EntityVersion, kind: "approve" | "reject") => {
+    const session = getSession();
+    if (!session) return;
+    setBusy((b) => new Set(b).add(v.id));
+    try {
+      if (kind === "approve") await apiApproveEntityVersion(session.token, v.id);
+      else await apiRejectEntityVersion(session.token, v.id);
+      notifications.show({
+        color: kind === "approve" ? "green" : "red",
+        message: `${label(v)} ${kind === "approve" ? t("adminApprovals_approvedWord") : t("adminApprovals_rejectedWord")}`,
+      });
+      setReloadTick((n) => n + 1);
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || (kind === "approve" ? t("adminApprovals_couldNotApprove") : t("adminApprovals_couldNotReject")) });
+    } finally {
+      setBusy((b) => { const n = new Set(b); n.delete(v.id); return n; });
+    }
+  };
+
+  // Approve / reject every ticked row, one by one, then summarize.
+  const bulk = async (kind: "approve" | "reject") => {
+    const session = getSession();
+    if (!session || !versions) return;
+    const targets = versions.filter((v) => selected.has(v.id));
+    if (kind === "reject" && !window.confirm(t("adminApprovals_rejectSelectedConfirm", { n: targets.length }))) return;
+    setBulkBusy(kind);
+    let ok = 0, failed = 0;
+    for (const v of targets) {
+      try {
+        if (kind === "approve") await apiApproveEntityVersion(session.token, v.id);
+        else await apiRejectEntityVersion(session.token, v.id);
+        ok++;
+      } catch { failed++; }
+    }
+    setBulkBusy(null);
+    setSelected(new Set());
+    notifications.show({
+      color: failed ? "yellow" : kind === "approve" ? "green" : "red",
+      message: t(kind === "approve" ? "adminApprovals_bulkApproved" : "adminApprovals_bulkRejected", { n: ok })
+        + (failed ? ` · ${t("adminApprovals_bulkFailed", { n: failed })}` : ""),
+    });
+    setReloadTick((n) => n + 1);
+  };
 
   const openReview = (v: EntityVersion) => { setReviewing(v); setNote(""); };
   const closeReview = () => { if (!acting) { setReviewing(null); setNote(""); } };
@@ -133,47 +210,74 @@ export default function AdminApprovalsPage() {
     }
   };
 
+  const allOnPage = (versions || []).map((v) => v.id);
+  const allTicked = allOnPage.length > 0 && allOnPage.every((id) => selected.has(id));
+  const typeFilters: { value: EntityType | "all"; key: Parameters<typeof t>[0]; color: string }[] = [
+    { value: "all", key: "adminApprovals_filterAll", color: "gray" },
+    { value: "farmer", key: ENTITY_LABEL_KEY.farmer, color: ENTITY_COLOR.farmer },
+    { value: "farm", key: ENTITY_LABEL_KEY.farm, color: ENTITY_COLOR.farm },
+    { value: "plot", key: ENTITY_LABEL_KEY.plot, color: ENTITY_COLOR.plot },
+  ];
+
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-start" wrap="wrap">
-        <div>
+        <div style={{ maxWidth: 760 }}>
           <Title order={3}>{t("adminApprovals_title")}</Title>
-          <Text c="dimmed" size="sm">
-            {t("adminApprovals_subtitle")}
-          </Text>
+          <Text c="dimmed" size="sm">{t("adminApprovals_subtitle")}</Text>
         </div>
-        <Button
-          color="green" leftSection={<Checks size={16} />}
-          disabled={!versions || versions.length === 0}
-          onClick={() => setApproveAllOpen(true)}
-        >
-          {t("adminApprovals_approveAll")}{total > 0 ? ` (${total})` : ""}
-        </Button>
+        <Group gap="sm">
+          <Button variant="default" leftSection={<ArrowsClockwise size={16} />} onClick={() => setReloadTick((n) => n + 1)}>
+            {t("adminRecords_refresh")}
+          </Button>
+          <Button
+            color="green" leftSection={<Checks size={16} />}
+            disabled={!versions || versions.length === 0}
+            onClick={() => setApproveAllOpen(true)}
+          >
+            {t("adminApprovals_approveAll")}{total > 0 ? ` (${total})` : ""}
+          </Button>
+        </Group>
+      </Group>
+
+      {/* Pending counts per type — click to filter. */}
+      <Group gap="sm">
+        {typeFilters.map((f) => (
+          <Button
+            key={f.value} size="compact-sm" radius="xl" color={f.color}
+            variant={entityType === f.value ? "filled" : "light"} aria-pressed={entityType === f.value}
+            onClick={() => onEntityType(f.value)}
+          >
+            {t(f.key)}{counts ? `: ${counts[f.value]}` : ""}
+          </Button>
+        ))}
       </Group>
 
       <Group wrap="wrap" gap="sm" align="flex-end">
-        <Select
-          label={t("adminVersions_entityTypeLabel")} value={entityType} onChange={(v) => onEntityType((v as EntityType | "all") || "all")}
-          data={[
-            { value: "all", label: t("adminVersions_allTypes") },
-            { value: "farmer", label: t(ENTITY_LABEL_KEY.farmer) },
-            { value: "farm", label: t(ENTITY_LABEL_KEY.farm) },
-            { value: "plot", label: t(ENTITY_LABEL_KEY.plot) },
-          ]}
-          allowDeselect={false}
-          w={140}
-        />
         <TextInput
           label={t("adminVersions_entityIdLabel")} placeholder={t("adminVersions_entityIdPlaceholder")}
           leftSection={<MagnifyingGlass size={14} />}
           value={entityId} onChange={(e) => onEntityId(e.currentTarget.value)}
-          w={170}
+          w={190}
         />
         <TextInput
           label={t("adminVersions_submittedByLabel")} placeholder={t("adminVersions_usernamePlaceholder")}
           value={submittedBy} onChange={(e) => onSubmittedBy(e.currentTarget.value)}
-          w={150}
+          w={170}
         />
+        {selected.size > 0 && (
+          <Group gap="sm" ml="auto">
+            <Text size="sm" fw={500}>{t("adminApprovals_selectedN", { n: selected.size })}</Text>
+            <Button size="sm" color="green" leftSection={<Check size={16} />} loading={bulkBusy === "approve"}
+              disabled={bulkBusy === "reject"} onClick={() => bulk("approve")}>
+              {t("adminApprovals_approveSelected")}
+            </Button>
+            <Button size="sm" color="red" variant="light" leftSection={<X size={16} />} loading={bulkBusy === "reject"}
+              disabled={bulkBusy === "approve"} onClick={() => bulk("reject")}>
+              {t("adminApprovals_rejectSelected")}
+            </Button>
+          </Group>
+        )}
       </Group>
 
       <Paper withBorder radius="lg" p={0}>
@@ -193,63 +297,132 @@ export default function AdminApprovalsPage() {
             <Stack align="center" gap={6}>
               <ClipboardText size={28} color="var(--mantine-color-gray-5)" />
               <Text c="dimmed" size="sm">{t("adminApprovals_nothingPending")}</Text>
+              {(entityType !== "all" || entityId.trim() || submittedBy.trim()) && (
+                <Button size="xs" variant="subtle" onClick={() => { onEntityType("all"); onEntityId(""); onSubmittedBy(""); }}>
+                  {t("adminApprovals_clearFilters")}
+                </Button>
+              )}
             </Stack>
           </Center>
         )}
         {versions && !error && versions.length > 0 && (
-          <Table.ScrollContainer minWidth={900}>
-            <Table verticalSpacing="sm" highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("adminVersions_colEntity")}</Table.Th>
-                  <Table.Th>{t("adminVersions_colVersion")}</Table.Th>
-                  <Table.Th>{t("adminVersions_colWhatChanged")}</Table.Th>
-                  <Table.Th>{t("adminVersions_colSubmitted")}</Table.Th>
-                  <Table.Th w={170} />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {versions.map((v) => {
-                  const diff = diffDynamicFields(v.data, v.previous_data);
-                  const summary = diff.length === 0
-                    ? (v.version_no === 1 ? "—" : t("adminVersions_summaryNoChanges"))
-                    : diff.map(({ key, after }) => `${fieldLabel(key, t)}: ${formatFieldValue(key, after, t, language)}`).join(" · ");
-                  return (
-                    <Table.Tr key={v.id}>
-                      <Table.Td>
-                        <Group gap={6} wrap="nowrap">
-                          <Badge color={ENTITY_COLOR[v.entity_type]} variant="light" radius="sm">
-                            {t(ENTITY_LABEL_KEY[v.entity_type])}
-                          </Badge>
-                          <Text size="sm" fw={500}>{v.entity_id}</Text>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td><Text size="sm" c="dimmed">v{v.version_no}</Text></Table.Td>
-                      <Table.Td maw={340}>
-                        <Text size="sm" c="dimmed" truncate>{summary.length > 100 ? summary.slice(0, 100) + "…" : summary}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{v.submitted_by || "—"}</Text>
-                        <Text size="xs" c="dimmed">{fmtDate(v.submitted_at)}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={6} wrap="nowrap" justify="flex-end">
-                          <Tooltip label={t("adminApprovals_review")}>
-                            <ActionIcon variant="subtle" color="gray" onClick={() => openReview(v)}>
-                              <Eye size={16} />
-                            </ActionIcon>
-                          </Tooltip>
-                          <Button size="xs" color="green" variant="light" leftSection={<CheckCircle size={14} />} onClick={() => openReview(v)}>
-                            {t("adminApprovals_review")}
-                          </Button>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+          <>
+            <Text size="xs" c="dimmed" px="md" pt="sm">{t("adminApprovals_clickHint")}</Text>
+            <Table.ScrollContainer minWidth={900}>
+              <Table verticalSpacing="sm" highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th w={36}>
+                      <Checkbox
+                        aria-label={t("adminPublish_selectAll")}
+                        checked={allTicked}
+                        indeterminate={!allTicked && allOnPage.some((id) => selected.has(id))}
+                        onChange={(e) => setSelected(e.currentTarget.checked ? new Set(allOnPage) : new Set())}
+                      />
+                    </Table.Th>
+                    <Table.Th>{t("adminVersions_colEntity")}</Table.Th>
+                    <Table.Th>{t("adminVersions_colWhatChanged")}</Table.Th>
+                    <Table.Th>{t("adminVersions_colSubmitted")}</Table.Th>
+                    <Table.Th w={190} />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {versions.map((v) => {
+                    const diff = diffDynamicFields(v.data, v.previous_data);
+                    const summary = diff.length === 0
+                      ? (v.version_no === 1 ? "—" : t("adminVersions_summaryNoChanges"))
+                      : diff.map(({ key, after }) => `${fieldLabel(key, t)}: ${formatFieldValue(key, after, t, language)}`).join(" · ");
+                    const open = expanded.has(v.id);
+                    const isBusy = busy.has(v.id);
+                    return (
+                      <Fragment key={v.id}>
+                        <Table.Tr style={{ cursor: "pointer" }} onClick={() => toggle(setExpanded, v.id)}
+                          bg={selected.has(v.id) ? "var(--mantine-color-green-light)" : undefined}>
+                          <Table.Td onClick={(e) => e.stopPropagation()}>
+                            <Checkbox aria-label={label(v)} checked={selected.has(v.id)} onChange={() => toggle(setSelected, v.id)} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={6} wrap="nowrap">
+                              {open ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                              <Badge color={ENTITY_COLOR[v.entity_type]} variant="light" radius="sm">{t(ENTITY_LABEL_KEY[v.entity_type])}</Badge>
+                              <div>
+                                <Text size="sm" fw={500}>{v.entity_id}</Text>
+                                <Text size="xs" c="dimmed">v{v.version_no}</Text>
+                              </div>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td maw={360}>
+                            <Text size="sm" c="dimmed" lineClamp={open ? undefined : 1}>{summary}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{v.submitted_by || "—"}</Text>
+                            <Text size="xs" c="dimmed">{fmtDate(v.submitted_at)}</Text>
+                          </Table.Td>
+                          <Table.Td onClick={(e) => e.stopPropagation()}>
+                            <Group gap={6} wrap="nowrap" justify="flex-end">
+                              <Tooltip label={t("adminApprovals_approveButton")}>
+                                <ActionIcon variant="light" color="green" size="lg" loading={isBusy} onClick={() => quick(v, "approve")}
+                                  aria-label={t("adminApprovals_approveButton")}>
+                                  <Check size={18} />
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label={t("adminApprovals_rejectButton")}>
+                                <ActionIcon variant="light" color="red" size="lg" disabled={isBusy} onClick={() => quick(v, "reject")}
+                                  aria-label={t("adminApprovals_rejectButton")}>
+                                  <X size={18} />
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label={t("adminApprovals_reviewWithNote")}>
+                                <ActionIcon variant="subtle" color="gray" size="lg" disabled={isBusy} onClick={() => openReview(v)}
+                                  aria-label={t("adminApprovals_review")}>
+                                  <Eye size={18} />
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                        {open && (
+                          <Table.Tr>
+                            <Table.Td />
+                            <Table.Td colSpan={4} bg="var(--mantine-color-gray-0)">
+                              {diff.length === 0 ? (
+                                <Text size="sm" c="dimmed">
+                                  {v.version_no === 1 ? t("adminVersions_noFieldsThisVersion") : t("adminApprovals_noChangesFromCurrent")}
+                                </Text>
+                              ) : (
+                                <Table verticalSpacing={4} withRowBorders={false}>
+                                  <Table.Tbody>
+                                    {diff.map(({ key, before, after }) => {
+                                      const b = formatFieldValue(key, before, t, language);
+                                      const a = formatFieldValue(key, after, t, language);
+                                      return (
+                                        <Table.Tr key={key}>
+                                          <Table.Td w="30%"><Text size="sm" c="dimmed">{fieldLabel(key, t)}</Text></Table.Td>
+                                          <Table.Td>
+                                            <Group gap={6} wrap="wrap">
+                                              {b !== "—" && <Text size="sm" c="dimmed" td="line-through">{b}</Text>}
+                                              {b !== "—" && <Text size="sm" c="dimmed">→</Text>}
+                                              {a === "—"
+                                                ? <Badge size="xs" color="red" variant="light">{t("adminVersions_clearedText")}</Badge>
+                                                : <Text size="sm" fw={600}>{a}</Text>}
+                                            </Group>
+                                          </Table.Td>
+                                        </Table.Tr>
+                                      );
+                                    })}
+                                  </Table.Tbody>
+                                </Table>
+                              )}
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </>
         )}
         {versions && !error && versions.length > 0 && totalPages > 1 && (
           <Group justify="center" p="md">

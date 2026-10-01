@@ -97,14 +97,16 @@ export async function softDeleteFarm(id: string): Promise<void> {
 
 export async function softDeletePlot(id: string): Promise<void> {
   const now = Date.now();
-  await db.transaction("rw", [db.farmers, db.plots, db.soilTextureTests, db.waterTDSTests], async () => {
+  await db.transaction("rw", [db.farmers, db.plots, db.soilTextureTests, db.waterTDSTests, db.soilSamples], async () => {
     const plot = await db.plots.get(id);
     await db.plots.update(id, { deleted: true, updatedAt: now, synced: false } as any);
-    const [textureTests, tdsTests] = await Promise.all([
+    const [textureTests, tdsTests, samples] = await Promise.all([
       db.soilTextureTests.where("plotId").equals(id).toArray(),
       db.waterTDSTests.where("plotId").equals(id).toArray(),
+      db.soilSamples.where("plotId").equals(id).toArray(),
     ]);
     await Promise.all([
+      ...samples.map((x) => db.soilSamples.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
       ...textureTests.map((x) => db.soilTextureTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
       ...tdsTests.map((x) => db.waterTDSTests.update(x.id, { deleted: true, updatedAt: now, synced: false } as any)),
     ]);

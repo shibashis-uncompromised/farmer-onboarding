@@ -11,7 +11,7 @@ import { useDisclosure } from "@mantine/hooks";
 import {
   Plus, MapPinLine, Crosshair, Plant, Tree, CheckCircle, Path, Polygon, MapPin, Trash,
   Flask, ClockCounterClockwise, PencilSimple, CalendarBlank, DeviceMobile, Users, Drop,
-  Warning, PawPrint, Tractor, TrendUp, Sun, Shield, Wrench,
+  Warning, PawPrint, Tractor, TrendUp, Sun, Shield, Wrench, TestTube,
 } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { notifications } from "@mantine/notifications";
@@ -225,6 +225,10 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   const [waterTestsPlot, setWaterTestsPlot] = useState<Plot | null>(null);
   const [addWaterTestPlot, setAddWaterTestPlot] = useState<Plot | null>(null);
   const [pendingCode, setPendingCode] = useState<string | null>(null);
+  // Soil samples are taken per PLOT: the plot being sampled, and the plot whose
+  // samples are being viewed (null in samplesOpen = the whole farm's history).
+  const [samplePlot, setSamplePlot] = useState<Plot | null>(null);
+  const [samplesPlot, setSamplesPlot] = useState<Plot | null>(null);
   const url = useMediaUrl(farm.photoId);
   const soilSamples = useLiveQuery(
     async () => (await db.soilSamples.where("farmId").equals(farm.id).toArray()).filter((x) => !x.deleted),
@@ -251,27 +255,36 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       notifications.show({ color: "blue", message: t("farms_sampleAlreadyAdded", { code }) });
       return;
     }
+    if (!samplePlot) return; // scanning always starts from a plot
     setPendingCode(code.toUpperCase());
     cropModal.open();
   };
+
+  const startScan = (plot: Plot) => { setSamplePlot(plot); scanModal.open(); };
+  const startManual = (plot: Plot) => { setSamplePlot(plot); manualModal.open(); };
 
   // Step 2 — SAVE IMMEDIATELY with past crops + a backup location (farm coords →
   // last known GPS), then improve the location in the background when a fresh
   // fix arrives. Never waits on GPS or network — works fully offline.
   const saveSample = async (pastCrops: string) => {
     const code = pendingCode;
+    const plot = samplePlot;
     cropModal.close();
     setPendingCode(null);
-    if (!code) return;
+    setSamplePlot(null);
+    if (!code || !plot) return;
     try {
+      // Backup location: the plot's own GPS → the farm's → last known fix.
       const last = getLastLocation();
-      const backup = farm.lat != null && farm.lng != null
+      const backup = plot.lat != null && plot.lng != null
+        ? { lat: plot.lat, lng: plot.lng, accuracy: plot.accuracy ?? null }
+        : farm.lat != null && farm.lng != null
         ? { lat: farm.lat, lng: farm.lng, accuracy: farm.accuracy ?? null }
         : last ? { lat: last.lat, lng: last.lng, accuracy: last.accuracy } : null;
       const now = Date.now();
       const sampleId = uid();
       await db.soilSamples.add({
-        id: sampleId, code, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
+        id: sampleId, code, plotId: plot.id, farmId: farm.id, farmerId: farm.farmerId, villageCode: farm.villageCode,
         pastCrops: pastCrops.trim() || undefined,
         lat: backup?.lat ?? null, lng: backup?.lng ?? null, accuracy: backup?.accuracy ?? null,
         createdAt: now, updatedAt: now, synced: false,
@@ -301,7 +314,10 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   return (
     <Card withBorder radius="md" p="sm">
       <Group justify="space-between" mb="xs">
-        <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+          <Badge variant="light" color="green" leftSection={<Tree size={13} />}>{farm.id}</Badge>
+          {farm.name && <Text size="sm" fw={600} truncate>{farm.name}</Text>}
+        </Group>
         <Group gap={6}>
           <Text size="xs" c="dimmed">{t("farms_plotCount", { n: plots.length })}</Text>
           <ActionIcon size="sm" variant="subtle" color="gray" onClick={editModal.open} aria-label={t("farms_editFarm")}>
@@ -335,6 +351,7 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
             onEdit={() => setEditPlot(p)}
             onOpenSoilTests={() => setSoilTestsPlot(p)}
             onOpenWaterTests={() => setWaterTestsPlot(p)}
+            onOpenSamples={() => setSamplesPlot(p)}
           />
         ))}
       </Stack>
@@ -343,10 +360,6 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
         <Button size="xs" variant="light" leftSection={<Plus size={14} />} onClick={plotModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
           {t("farms_addPlot")}
-        </Button>
-        <Button size="xs" variant="light" color="orange" leftSection={<Flask size={14} />} onClick={scanModal.open}
-          styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
-          {t("farms_soilSample")}
         </Button>
         <Button size="xs" variant="light" color="gray" leftSection={<ClockCounterClockwise size={14} />} onClick={samplesModal.open}
           styles={{ section: { marginRight: 4 }, label: { fontSize: 11 } }}>
@@ -358,8 +371,23 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
       <AddPlotModal opened={!!editPlot} onClose={() => setEditPlot(null)} farm={farm} editPlot={editPlot} />
       <QrScanner opened={scanOpen} onClose={scanModal.close} onScan={onScanSample} onManual={manualModal.open} />
       <ManualSampleModal opened={manualOpen} onClose={manualModal.close} onSubmit={onScanSample} />
-      <SoilCropModal opened={cropOpen} onClose={() => { cropModal.close(); setPendingCode(null); }} code={pendingCode} onSave={saveSample} />
-      <SoilSamplesModal opened={samplesOpen} onClose={samplesModal.close} farm={farm} samples={soilSamples || []} onScanMore={scanModal.open} onManual={manualModal.open} />
+      <SoilCropModal opened={cropOpen} onClose={() => { cropModal.close(); setPendingCode(null); setSamplePlot(null); }} code={pendingCode} onSave={saveSample} />
+      {/* One plot's samples — scan more from here. */}
+      <SoilSamplesModal
+        opened={!!samplesPlot} onClose={() => setSamplesPlot(null)}
+        title={samplesPlot ? `${t("farms_soilSamplesLabel")} · ${plotDisplayName(samplesPlot, t)}` : ""}
+        samples={(soilSamples || []).filter((x) => x.plotId === samplesPlot?.id)}
+        plots={plots}
+        onScanMore={() => { const p = samplesPlot; setSamplesPlot(null); if (p) startScan(p); }}
+        onManual={() => { const p = samplesPlot; setSamplesPlot(null); if (p) startManual(p); }}
+      />
+      {/* Whole farm: every plot's samples + older farm-level samples as history. */}
+      <SoilSamplesModal
+        opened={samplesOpen} onClose={samplesModal.close}
+        title={`${t("farms_soilSamplesLabel")} · ${farm.id}`}
+        samples={soilSamples || []}
+        plots={plots}
+      />
       <AddFarmModal opened={editOpen} onClose={editModal.close} editFarm={farm} />
       <FarmDetailModal opened={detailOpen} onClose={detailModal.close} farm={farm} plots={plots} samples={soilSamples || []} photoUrl={url} onEdit={() => { detailModal.close(); editModal.open(); }} />
       <SoilTextureTestsModal
@@ -376,13 +404,24 @@ function FarmCard({ farm, plots }: { farm: Farm; plots: any[] }) {
   );
 }
 
+// "Plot 1"-style label, or the admin-given plot name.
+function plotDisplayName(plot: Plot | undefined, t: (k: TranslationKey, v?: Record<string, string | number>) => string, fallbackId?: string) {
+  if (!plot) return fallbackId ? fallbackId.split("/").pop() || fallbackId : "—";
+  return plot.name || t("farms_plotN", { seq: plot.seq });
+}
+
 // ---- One plot row in a farm's plot list — its own component so the
 // soil-type-test count can be live-queried per plot without breaking the
 // rules of hooks inside a .map(). ----
 function PlotRow(
-  { plot, onEdit, onOpenSoilTests, onOpenWaterTests }:
-  { plot: Plot; onEdit: () => void; onOpenSoilTests: () => void; onOpenWaterTests: () => void }
+  { plot, onEdit, onOpenSoilTests, onOpenWaterTests, onOpenSamples }:
+  { plot: Plot; onEdit: () => void; onOpenSoilTests: () => void; onOpenWaterTests: () => void; onOpenSamples: () => void }
 ) {
+  const samples = useLiveQuery(
+    async (): Promise<SoilSample[]> => (await db.soilSamples.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted),
+    [plot.id]
+  );
+  const sampleCount = samples?.length ?? 0;
   const soilTests = useLiveQuery(
     async (): Promise<SoilTextureTest[]> => (await db.soilTextureTests.where("plotId").equals(plot.id).toArray()).filter((x) => !x.deleted),
     [plot.id]
@@ -401,7 +440,9 @@ function PlotRow(
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
             <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Text size="sm" fw={600} truncate>{plot.crop ? cropLabel(plot.crop, language) : "—"}</Text>
+              <Text size="sm" fw={600} truncate>
+                {plot.name || t("farms_plotN", { seq: plot.seq })} · {plot.crop ? cropLabel(plot.crop, language) : t("farms_noCropYet")}
+              </Text>
               {(waterTestCount > 0 || soilTestCount > 0) && (
                 <Group gap={4} wrap="wrap" mt={2}>
                   {waterTestCount > 0 && (
@@ -416,7 +457,7 @@ function PlotRow(
                   )}
                 </Group>
               )}
-              <Text size="xs" c="dimmed" mt={2} truncate>{t("farms_plotN", { seq: plot.seq })}{plot.sowingDate ? ` · ${t("farms_sownOn", { date: plot.sowingDate })}` : ""} · {fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
+              <Text size="xs" c="dimmed" mt={2} truncate>{plot.sowingDate ? `${t("farms_sownOn", { date: plot.sowingDate })} · ` : ""}{fmtCoord(plot.lat)}, {fmtCoord(plot.lng)}</Text>
             </div>
             <PencilSimple size={14} color="var(--mantine-color-gray-5)" />
           </Group>
@@ -428,20 +469,31 @@ function PlotRow(
           <Flask size={15} />
         </ActionIcon>
       </Group>
+      {/* Labelled (not icon-only) so field staff can't miss where soil samples go. */}
+      <Button
+        mt={6} size="xs" fullWidth variant="light" color="grape"
+        leftSection={<TestTube size={14} />}
+        onClick={onOpenSamples}
+        aria-label={t("farms_soilSampleAria", { seq: plot.seq })}
+      >
+        {sampleCount > 0 ? `${t("farms_soilSample")} (${sampleCount})` : t("farms_soilSample")}
+      </Button>
     </Paper>
   );
 }
 
 // ---- Timeline of soil samples taken from a farm ----
 function SoilSamplesModal(
-  { opened, onClose, farm, samples, onScanMore, onManual }:
+  { opened, onClose, title, samples, plots, onScanMore, onManual }:
   {
     opened: boolean;
     onClose: () => void;
-    farm: Farm;
+    title: string;
     samples: SoilSample[];
-    onScanMore: () => void;
-    onManual: () => void;
+    plots: Plot[];
+    // Only for one plot's view — the farm-wide history has no "scan" (scans start from a plot).
+    onScanMore?: () => void;
+    onManual?: () => void;
   }
 ) {
   const { t } = useLanguage();
@@ -458,7 +510,7 @@ function SoilSamplesModal(
 
   return (
     <AppModal opened={opened} onClose={onClose}
-      title={`${t("farms_soilSamplesLabel")} · ${farm.id}${sorted.length ? ` (${sorted.length})` : ""}`}>
+      title={`${title}${sorted.length ? ` (${sorted.length})` : ""}`}>
       <Stack gap="md">
         {sorted.length === 0 ? (
           <Stack align="center" gap={6} py="lg">
@@ -471,6 +523,9 @@ function SoilSamplesModal(
             {sorted.map((s) => (
               <Timeline.Item key={s.id} bullet={<Flask size={13} weight="fill" />}
                 title={<Group gap={6}><Text fw={700} size="sm">{s.code}</Text>
+                  <Badge size="xs" variant="outline" color={s.plotId ? "grape" : "gray"}>
+                    {s.plotId ? plotDisplayName(plots.find((p) => p.id === s.plotId), t, s.plotId) : t("farms_farmLevelEarlier")}
+                  </Badge>
                   {!s.synced && <Badge size="xs" variant="light" color="orange">{t("farms_notSynced")}</Badge>}</Group>}>
                 <Text size="xs" c="dimmed">{dayLabel(s.createdAt)} · {fmtWhen(s.createdAt)}</Text>
                 <Text size="xs" c="dimmed">
@@ -483,16 +538,16 @@ function SoilSamplesModal(
             ))}
           </Timeline>
         )}
-        <Group grow gap="sm">
-          <Button variant="light" color="orange" leftSection={<Flask size={16} />}
-            onClick={() => { onClose(); onScanMore(); }}>
-            {t("farms_scanQrButton")}
-          </Button>
-          <Button variant="light" color="gray" leftSection={<PencilSimple size={16} />}
-            onClick={() => { onClose(); onManual(); }}>
-            {t("farms_typeCode")}
-          </Button>
-        </Group>
+        {onScanMore && onManual && (
+          <Group grow gap="sm">
+            <Button variant="light" color="orange" leftSection={<Flask size={16} />} onClick={onScanMore}>
+              {t("farms_scanQrButton")}
+            </Button>
+            <Button variant="light" color="gray" leftSection={<PencilSimple size={16} />} onClick={onManual}>
+              {t("farms_typeCode")}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </AppModal>
   );
@@ -1485,6 +1540,13 @@ function AddFarmModal(
           lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           boundary: boundary.length ? boundary : undefined, note: note.trim() || undefined,
           ...attrFields,
+          createdAt: now, updatedAt: now, synced: false,
+        });
+        // Every farm starts with Plot 1 (empty — crop filled in later by editing
+        // the plot). No crop yet, so it creates no approval-queue entry.
+        await db.plots.add({
+          id: `${id}/001`, farmId: id, farmerId, seq: "001",
+          lat: loc?.lat ?? null, lng: loc?.lng ?? null, accuracy: loc?.accuracy ?? null,
           createdAt: now, updatedAt: now, synced: false,
         });
         await db.farmers.update(farmerId, { updatedAt: now, synced: false });

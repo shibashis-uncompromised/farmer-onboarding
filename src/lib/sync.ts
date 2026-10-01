@@ -11,9 +11,12 @@ const chunksOf = <T>(rows: T[], size = SYNC_BATCH_SIZE): T[][] => {
   return chunks;
 };
 
-// Merge server records into a local table, last-write-wins by updatedAt.
+// Merge server records into a local table. A local copy with no unsent
+// changes (synced) always takes the server's version — so admin edits arrive
+// even when this phone's clock runs ahead of the server's. A local copy with
+// unsent changes keeps last-write-wins by updatedAt (its push will follow).
 // Pulled records are marked synced (they're reconciled with the server).
-async function mergeTable<T extends { id: string; updatedAt?: number }>(
+async function mergeTable<T extends { id: string; updatedAt?: number; synced?: boolean }>(
   table: Table<T, string>,
   records: T[]
 ): Promise<number> {
@@ -21,7 +24,8 @@ async function mergeTable<T extends { id: string; updatedAt?: number }>(
   for (const r of records || []) {
     if (!r || !r.id) continue;
     const local = await table.get(r.id);
-    if (!local || (r.updatedAt || 0) > (local.updatedAt || 0)) {
+    if (!local || (local.synced && (r.updatedAt || 0) !== (local.updatedAt || 0))
+        || (r.updatedAt || 0) > (local.updatedAt || 0)) {
       await table.put({ ...r, synced: true } as T);
       n++;
     }

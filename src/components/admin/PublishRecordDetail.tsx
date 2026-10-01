@@ -39,7 +39,8 @@ export default function PublishRecordDetail({
                 <Text size="sm" fw={600}>{t(PUBLISH_CURRENT_META[item.current.now].key)}</Text>
                 {item.current.revert && (
                   <Text size="xs">
-                    {t(item.current.revert.action === "discard" ? "adminPublish_nowRevertDiscard" : "adminPublish_nowRevertRestore", {
+                    {t(item.current.revert.action === "discard" ? "adminPublish_nowRevertDiscard"
+                      : item.current.revert.action === "skip" ? "adminPublish_nowRevertSkip" : "adminPublish_nowRevertRestore", {
                       by: item.current.revert.by, at: new Date(item.current.revert.at).toLocaleString(),
                     })}
                   </Text>
