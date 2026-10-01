@@ -221,12 +221,13 @@ export default function AdminPublishPage() {
   const resolutionOptions = (i: PublishItem) => {
     const opts = [{ value: "", label: t("adminPublish_resolveHold") }];
     const c = i.conflict;
-    if (c?.kind === "name") {
+    if (c?.kind === "name" || c?.kind === "unlinked") {
       for (const cand of c.candidates || []) opts.push({ value: `link:${cand.id}`, label: t("adminPublish_resolveLink", { label: cand.label }) });
       opts.push({ value: "create_new", label: t("adminPublish_resolveCreateNew") });
     } else if (c?.kind === "modified") {
       opts.push({ value: "overwrite", label: t("adminPublish_resolveOverwrite") });
     } else if (c?.kind === "missing") {
+      for (const cand of c.candidates || []) opts.push({ value: `link:${cand.id}`, label: t("adminPublish_resolveLink", { label: cand.label }) });
       opts.push({ value: "overwrite", label: t("adminPublish_resolveRecreate") });
     }
     opts.push({ value: "skip", label: t("adminPublish_resolveSkip") });
@@ -397,9 +398,20 @@ export default function AdminPublishPage() {
                       </Table.Td>
                       <Table.Td>
                         <Stack gap={2}>
-                          {statusBadge(i.status)}
-                          {i.conflict && <Text size="xs" c="dimmed">{t(CONFLICT_KEY[i.conflict.kind])}</Text>}
-                          {i.error && <Text size="xs" c="red">{i.error}</Text>}
+                          {i.waitingFor ? (
+                            <>
+                              <Badge color="gray" variant="light" radius="sm">{t("adminPublish_statusWaiting")}</Badge>
+                              <Text size="xs" c="dimmed">
+                                {t("adminPublish_waitingFor", { type: i.waitingFor.type, label: i.waitingFor.label })}
+                              </Text>
+                            </>
+                          ) : (
+                            <>
+                              {statusBadge(i.status)}
+                              {i.conflict && <Text size="xs" c="dimmed">{t(CONFLICT_KEY[i.conflict.kind])}</Text>}
+                              {i.error && <Text size="xs" c="red">{i.error}</Text>}
+                            </>
+                          )}
                           {i.warnings?.length > 0 && (
                             <Tooltip label={i.warnings.join("\n")} multiline w={320}>
                               <Text size="xs" c="orange">{t("adminPublish_warnings")} ({i.warnings.length})</Text>
@@ -427,7 +439,7 @@ export default function AdminPublishPage() {
                               <Button size="xs" variant="subtle" onClick={() => setComparing(i)}>{t("adminPublish_compare")}</Button>
                             )}
                           </Group>
-                        ) : i.status === "error" && i.revert ? (
+                        ) : i.status === "error" && i.revert && !i.waitingFor ? (
                           <Button
                             size="xs" variant="light" color={REVERT_META[i.revert].color}
                             leftSection={revertIcon(i.revert, 14)}
