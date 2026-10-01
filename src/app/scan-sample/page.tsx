@@ -12,7 +12,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
-import { VILLAGES, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel, villageNameLabel } from "@/lib/villages";
+import { VILLAGES, getPresetVillages, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel, villageNameLabel } from "@/lib/villages";
 import { CROPS, cropLabel } from "@/lib/crops";
 import { looksLikeSoilCode, looksLikeFarmerCode } from "@/lib/qr";
 import { CROP_API_VALUE, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
@@ -203,7 +203,7 @@ function ScanSampleInner() {
 
             <Select
               label={t("scanSample_villageLabel")} required withAsterisk placeholder={t("scanSample_villagePlaceholder")}
-              data={VILLAGES.map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} · ${stateLabel(v.state, language)}` }))}
+              data={getPresetVillages().map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} · ${stateLabel(v.state, language)}` }))}
               value={form.villageCode || null}
               onChange={(v) => {
                 const vv = v ? villageByCode(v) : undefined;

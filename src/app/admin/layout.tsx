@@ -7,7 +7,7 @@ import {
   Text, Tooltip, UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { CaretDown, CheckCircle, ClockCounterClockwise, CloudArrowUp, House, Plant, SignOut, UsersThree } from "@phosphor-icons/react";
+import { CaretDown, CheckCircle, ClockCounterClockwise, CloudArrowUp, House, MapPin, Plant, SignOut, UsersThree } from "@phosphor-icons/react";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/LanguageContext";
@@ -19,6 +19,7 @@ const NAV_ITEMS: { labelKey: TranslationKey; href: string; icon: typeof UsersThr
   { labelKey: "adminLayout_navUsers", href: "/admin/users/", icon: UsersThree },
   { labelKey: "adminLayout_navApprovals", href: "/admin/approvals/", icon: CheckCircle },
   { labelKey: "adminLayout_navRecords", href: "/admin/records/", icon: Plant },
+  { labelKey: "adminLayout_navVillages", href: "/admin/villages/", icon: MapPin },
   { labelKey: "adminLayout_navVersions", href: "/admin/versions/", icon: ClockCounterClockwise },
   { labelKey: "adminLayout_navPublish", href: "/admin/publish/", icon: CloudArrowUp },
 ];

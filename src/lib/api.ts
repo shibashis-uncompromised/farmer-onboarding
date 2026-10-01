@@ -347,6 +347,20 @@ export const apiAdminUpdateRecord = (
 ): Promise<{ ok: true; record: Record<string, any> }> =>
   req("/api/admin/records/update", { method: "POST", body: JSON.stringify({ token, entityType, entityId, changes }) });
 
+// ---- Admin: villages (name / block / district / state; region + ID code locked) ----
+export interface AdminVillage {
+  code: string; name: string; block: string; idCode: string; region: string; state: string; district: string;
+  createdBy?: string | null; preset: boolean; edited: boolean; farmers: number;
+}
+export const apiAdminListVillages = (token: string): Promise<{ villages: AdminVillage[] }> =>
+  req("/api/admin/villages/list", { method: "POST", body: JSON.stringify({ token }) });
+export const apiAdminUpdateVillage = (
+  token: string,
+  code: string,
+  changes: Partial<Pick<AdminVillage, "name" | "block" | "district" | "state">>
+): Promise<{ ok: true; village: AdminVillage }> =>
+  req("/api/admin/villages/update", { method: "POST", body: JSON.stringify({ token, code, changes }) });
+
 // ---- Admin: plot cultivations (admin-only; supervisors never see them) ----
 export interface Cultivation {
   id: string;

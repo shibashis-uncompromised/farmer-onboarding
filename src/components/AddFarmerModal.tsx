@@ -91,7 +91,7 @@ export default function AddFarmerModal({ opened, onClose, defaultVillage, onCrea
           <TextInput label={t("addFarmer_scannedCodeLabel")} value={scannedCode} readOnly variant="filled" styles={{ input: { fontWeight: 700 } }} />
         )}
         <Select
-          label={t("scanSample_villageLabel")} data={villagesForUser(getSession()?.username).map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} (${villageBlockLabel(v, language)})` }))}
+          label={t("scanSample_villageLabel")} data={villagesForUser(getSession()?.username, getSession()?.role).map((v) => ({ value: v.code, label: `${villageNameLabel(v, language)} (${villageBlockLabel(v, language)})` }))}
           value={village} onChange={(v) => setVillage(v || "")} allowDeselect={false} checkIconPosition="right"
         />
         <TextInput label={t("bio_firstName")} placeholder={t("addFarmer_firstNamePlaceholder")} value={first}
