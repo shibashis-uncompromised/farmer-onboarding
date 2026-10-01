@@ -11,7 +11,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import AppModal from "@/components/AppModal";
 import {
-  apiPublishPreview, apiPublishRevert, apiPublishRun, apiPublishRuns,
+  apiPublishPreview, apiPublishRevert, apiPublishRun, apiPublishRuns, apiPublishUnskip,
   type PublishEntityType, type PublishItem, type PublishProgress, type PublishResolution, type PublishRun, type PublishStatus,
 } from "@/lib/api";
 import { getSession } from "@/lib/session";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/publishMeta";
 import PublishRecordDetail from "@/components/admin/PublishRecordDetail";
 import PublishRunDetail from "@/components/admin/PublishRunDetail";
+import PublishSkippedModal from "@/components/admin/PublishSkippedModal";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 // Publish to TerraOS: onboarding backend → uc-core. Deliberately never called
@@ -124,6 +125,24 @@ export default function AdminPublishPage() {
   }, []);
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const [skippedOpen, setSkippedOpen] = useState(false);
+  const [unskipping, setUnskipping] = useState<string | null>(null);
+  // Un-skip a parent from a row that's waiting for it, then check again.
+  const unskipParent = async (key: string, label: string) => {
+    const session = getSession();
+    if (!session) return;
+    setUnskipping(key);
+    try {
+      await apiPublishUnskip(session.token, [key]);
+      notifications.show({ color: "green", message: t("adminPublish_unskippedToast", { label }) });
+      await check();
+    } catch (e: any) {
+      notifications.show({ color: "red", message: e?.message || t("adminPublish_unskipError") });
+    } finally {
+      setUnskipping(null);
+    }
+  };
 
   const check = async () => {
     const session = getSession();
@@ -246,6 +265,9 @@ export default function AdminPublishPage() {
           <Text c="dimmed" size="sm">{t("adminPublish_subtitle")}</Text>
         </div>
         <Group gap="sm">
+          <Button variant="subtle" color="gray" disabled={!configured || publishing} onClick={() => setSkippedOpen(true)}>
+            {t("adminPublish_skippedButton")}
+          </Button>
           <Button variant="default" leftSection={<ArrowsClockwise size={16} />} loading={checking} disabled={!configured || publishing} onClick={check}>
             {t("adminPublish_checkChanges")}
           </Button>
@@ -402,7 +424,7 @@ export default function AdminPublishPage() {
                             <>
                               <Badge color="gray" variant="light" radius="sm">{t("adminPublish_statusWaiting")}</Badge>
                               <Text size="xs" c="dimmed">
-                                {t("adminPublish_waitingFor", { type: i.waitingFor.type, label: i.waitingFor.label })}
+                                {t(i.waitingFor.skipped ? "adminPublish_waitingForSkipped" : "adminPublish_waitingFor", { type: i.waitingFor.type, label: i.waitingFor.label })}
                               </Text>
                             </>
                           ) : (
@@ -439,6 +461,15 @@ export default function AdminPublishPage() {
                               <Button size="xs" variant="subtle" onClick={() => setComparing(i)}>{t("adminPublish_compare")}</Button>
                             )}
                           </Group>
+                        ) : i.waitingFor?.skipped ? (
+                          <Button
+                            size="xs" variant="light" color="blue"
+                            loading={unskipping === `${i.waitingFor.type}:${i.waitingFor.sourceId}`}
+                            disabled={publishing || checking}
+                            onClick={() => unskipParent(`${i.waitingFor!.type}:${i.waitingFor!.sourceId}`, i.waitingFor!.label)}
+                          >
+                            {t("adminPublish_unskipParent", { label: i.waitingFor.label })}
+                          </Button>
                         ) : i.status === "error" && i.revert && !i.waitingFor ? (
                           <Button
                             size="xs" variant="light" color={REVERT_META[i.revert].color}
@@ -600,6 +631,7 @@ export default function AdminPublishPage() {
 
       <PublishRecordDetail item={openItem} preview onClose={() => setOpenItem(null)} />
       <PublishRunDetail run={openRun} onClose={() => setOpenRun(null)} />
+      <PublishSkippedModal opened={skippedOpen} onClose={() => setSkippedOpen(false)} onUnskipped={check} />
     </Stack>
   );
 }
