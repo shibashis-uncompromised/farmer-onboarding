@@ -47,6 +47,7 @@ export const PUBLISH_CHANGE_KEY: Record<string, TranslationKey> = {
 
 export const PUBLISH_CONFLICT_KEY: Record<string, TranslationKey> = {
   name: "adminPublish_conflictName", modified: "adminPublish_conflictModified", missing: "adminPublish_conflictMissing",
+  unlinked: "adminPublish_conflictUnlinked",
 };
 
 export const publishItemKey = (i: { type: string; sourceId: string }) => `${i.type}:${i.sourceId}`;

@@ -220,7 +220,7 @@ export type PublishStatus =
   | "conflict" | "error";
 
 export interface PublishConflict {
-  kind: "name" | "modified" | "missing";
+  kind: "name" | "modified" | "missing" | "unlinked";
   message: string;
   candidates?: { id: string; label: string }[];
   terraos?: Record<string, any>;
@@ -235,6 +235,8 @@ export interface PublishItem {
   conflict: PublishConflict | null;
   error: string | null;
   warnings: string[];
+  /** Preview only: fails just because this parent isn't in TerraOS yet — fix the parent. */
+  waitingFor?: { type: PublishEntityType; sourceId: string; label: string };
   onboarding?: Record<string, any>;
   /** The record as sent (or, in a preview, as it will be sent) to TerraOS. */
   sent?: {
