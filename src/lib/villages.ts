@@ -6,6 +6,7 @@
 
 import type { Language } from "./i18n/LanguageContext";
 import { getStateLabel, getDistrictLabel, getVillageLabel, getBlockLabel } from "./dataLabels";
+import { getSession } from "./session";
 
 export interface Village {
   code: string;     // unique key, e.g. "001"
@@ -16,6 +17,7 @@ export interface Village {
   state: string;    // Neoperk state (exact enum): "Rajasthan" | "Madhya Pradesh" | "Gujarat"
   district: string; // Neoperk district (exact enum spelling for that state's project)
   createdBy?: string; // set on user-created villages (preset villages leave this undefined)
+  presetOverride?: boolean; // admin edit of a preset village (name/block/district/state)
 }
 
 // Default region prefix (kept for back-compat; villages now carry their own).
@@ -80,15 +82,27 @@ export function villageBlockLabel(v: Village, language: Language): string {
 // module-level cache so the many SYNCHRONOUS callers (villageByCode, dropdowns,
 // exports) keep working. The cache is refreshed from IndexedDB by <VillageCache/>
 // (mounted in Providers) whenever the local villages table changes.
+// The same table also carries admin edits of preset villages (presetOverride
+// rows); those are applied on top of VILLAGES rather than listed separately.
 let dynamicVillages: Village[] = [];
-export function setDynamicVillages(list: Village[]) { dynamicVillages = list; }
+let presetVillages: Village[] = VILLAGES;
+export function setDynamicVillages(list: Village[]) {
+  const overrides = new Map(list.filter((v) => v.presetOverride).map((v) => [v.code, v]));
+  presetVillages = VILLAGES.map((v) => {
+    const o = overrides.get(v.code);
+    // Region and idCode are locked — IDs are built from them.
+    return o ? { ...v, name: o.name || v.name, block: o.block ?? v.block, district: o.district ?? v.district, state: o.state ?? v.state } : v;
+  });
+  dynamicVillages = list.filter((v) => !v.presetOverride);
+}
 export function getDynamicVillages(): Village[] { return dynamicVillages; }
+export const getPresetVillages = (): Village[] => presetVillages;
 
 // All villages the app knows about right now (preset + user-created).
-export const allVillages = (): Village[] => [...VILLAGES, ...dynamicVillages];
+export const allVillages = (): Village[] => [...presetVillages, ...dynamicVillages];
 
 export const villageByCode = (code: string): Village | undefined =>
-  VILLAGES.find((v) => v.code === code) || dynamicVillages.find((v) => v.code === code);
+  presetVillages.find((v) => v.code === code) || dynamicVillages.find((v) => v.code === code);
 
 // ---- Per-user village scoping (UI-only) ----
 // Which region(s) each user may see. Unlisted users default to RJ, so existing
@@ -105,19 +119,32 @@ const USER_VILLAGES: Record<string, string[]> = {
   "9001509839": ["002", "001"],   // Aamod (002) + Velua (001) only
 };
 
-export function regionsForUser(username: string | null | undefined): string[] {
+// Any admin account (by role, not just the "admin" username) sees everything.
+const isAdminUser = (username: string | null | undefined, role?: string | null) => {
+  const uname = (username || "").toLowerCase();
+  if (uname === "admin" || role === "admin") return true;
+  const s = getSession();
+  return !!s && s.role === "admin" && (s.username || "").toLowerCase() === uname;
+};
+
+export function regionsForUser(username: string | null | undefined, role?: string | null): string[] {
+  if (isAdminUser(username, role)) return USER_REGIONS.admin;
   return USER_REGIONS[(username || "").toLowerCase()] || ["RJ"];
 }
 
-export function villagesForUser(username: string | null | undefined): Village[] {
+export function villagesForUser(username: string | null | undefined, role?: string | null): Village[] {
   const uname = (username || "").toLowerCase();
-  const isAdmin = uname === "admin";
+  const isAdmin = isAdminUser(username, role);
   // Preset villages: per-user allowlist wins, else region scoping.
-  const allow = USER_VILLAGES[uname];
+  const allow = isAdmin ? undefined : USER_VILLAGES[uname];
   const preset = allow
-    ? VILLAGES.filter((v) => allow.includes(v.code))
-    : VILLAGES.filter((v) => regionsForUser(username).includes(v.region));
-  // User-created villages: visible to the creator and to admin.
-  const custom = dynamicVillages.filter((v) => isAdmin || (v.createdBy || "").toLowerCase() === uname);
+    ? presetVillages.filter((v) => allow.includes(v.code))
+    : presetVillages.filter((v) => regionsForUser(username, role).includes(v.region));
+  // User-created villages: admin sees all; supervisors see every village in
+  // their region (whoever created it) plus their own. Users on a village
+  // allowlist only get the ones they created themselves.
+  const regions = regionsForUser(username, role);
+  const custom = dynamicVillages.filter((v) =>
+    isAdmin || (v.createdBy || "").toLowerCase() === uname || (!allow && regions.includes(v.region)));
   return [...preset, ...custom];
 }

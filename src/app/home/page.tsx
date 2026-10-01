@@ -55,9 +55,9 @@ function HomeInner() {
   const dynVillages = useLiveQuery(async () => (await db.villages.toArray()).filter((v) => !v.deleted), []);
   const villages = useMemo(() => {
     if (dynVillages) setDynamicVillages(dynVillages as any);
-    return villagesForUser(user.username);
+    return villagesForUser(user.username, user.role);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.username, dynVillages]);
+  }, [user.username, user.role, dynVillages]);
   // Persist the selected village so it survives navigation/reload (and offline).
   const [village, setVillageState] = useState<string>(() => {
     try { return localStorage.getItem("fo_selected_village") || ""; }
