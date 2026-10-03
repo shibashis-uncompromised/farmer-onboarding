@@ -236,7 +236,7 @@ export interface PublishItem {
   error: string | null;
   warnings: string[];
   /** Preview only: fails just because this parent isn't in TerraOS yet — fix the parent. */
-  waitingFor?: { type: PublishEntityType; sourceId: string; label: string };
+  waitingFor?: { type: PublishEntityType; sourceId: string; label: string; skipped?: boolean };
   onboarding?: Record<string, any>;
   /** The record as sent (or, in a preview, as it will be sent) to TerraOS. */
   sent?: {
@@ -264,7 +264,7 @@ export interface PublishCurrent {
   inTerraos: boolean;
   targetId: string | null;
   publishedAt: string | null;
-  revert: { action: "discard" | "restore" | "skip"; by: string; at: string } | null;
+  revert: { action: "discard" | "restore" | "skip" | "unskip"; by: string; at: string } | null;
 }
 
 export type PublishResolution = "overwrite" | "create_new" | "skip" | { linkTo: string };
@@ -336,6 +336,22 @@ export const apiPublishRevert = (
   sourceId: string
 ): Promise<{ ok: true; action: "discard" | "restore" | "skip" }> =>
   req("/api/admin/publish/revert", { method: "POST", body: JSON.stringify({ token, type, sourceId }) }, 60000);
+
+// Skipped records are treated as done and never sent again unless they
+// change; un-skipping sends them on the next check/publish.
+export interface SkippedRecord {
+  type: PublishEntityType;
+  sourceId: string;
+  label: string;
+  inTerraos: boolean;
+  skippedAt: string;
+  current: boolean;   // false = changed since the skip, so already pending again
+  children: number;   // records under it (they can't publish without it)
+}
+export const apiPublishSkipped = (token: string): Promise<{ skipped: SkippedRecord[] }> =>
+  req("/api/admin/publish/skipped", { method: "POST", body: JSON.stringify({ token }) }, 60000);
+export const apiPublishUnskip = (token: string, keys: string[]): Promise<{ ok: true; unskipped: number }> =>
+  req("/api/admin/publish/unskip", { method: "POST", body: JSON.stringify({ token, keys }) });
 
 // ---- Admin: edit any record directly (applies immediately, no approval) ----
 // `changes` may hold any editable field — names, phone, farm/plot name, survey

@@ -40,7 +40,8 @@ export default function PublishRecordDetail({
                 {item.current.revert && (
                   <Text size="xs">
                     {t(item.current.revert.action === "discard" ? "adminPublish_nowRevertDiscard"
-                      : item.current.revert.action === "skip" ? "adminPublish_nowRevertSkip" : "adminPublish_nowRevertRestore", {
+                      : item.current.revert.action === "skip" ? "adminPublish_nowRevertSkip"
+                      : item.current.revert.action === "unskip" ? "adminPublish_nowRevertUnskip" : "adminPublish_nowRevertRestore", {
                       by: item.current.revert.by, at: new Date(item.current.revert.at).toLocaleString(),
                     })}
                   </Text>
