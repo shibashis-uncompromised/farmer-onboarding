@@ -10,7 +10,40 @@
 import type { Language } from "./i18n/LanguageContext";
 import { getCropLabel } from "./dataLabels";
 
-export const CROPS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric"];
+export const CROPS = [
+  "Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric",
+  // 2026 onboarding portfolio (trials included)
+  "Ajwain (TRIAL)",
+  "Ashwagandha (TRIAL)",
+  "Barley (jau)",
+  "Black Chana",
+  "Kabuli Chana",
+  "Chia",
+  "Coriander (seed)",
+  "Cumin",
+  "Dried Spinach (palak)",
+  "Fennel (saunf)",
+  "Field Pea (protein/PoV)",
+  "Flaxseed (linseed)",
+  "Garlic",
+  "Isabgol (psyllium)",
+  "Kasuri methi (dried)",
+  "Methi (fenugreek) seed",
+  "Black Mustard",
+  "Yellow Mustard",
+  "Oats",
+  "Potato (semi-perishable)",
+  "Quinoa (TRIAL)",
+  "Red chilli (dry)",
+  "Safflower (oil)",
+  "Sugarbeet (TRIAL, industrial)",
+  "Sun-dried Tomato",
+  "Masoor",
+  "Wheat - Black (trial)",
+  "Wheat - Khapli (emmer)",
+  "Wheat - Sona-Moti (trial)",
+  "Wheat - Sharbati",
+];
 
 // Appends any current-season crop missing from the previous-crop list, so a
 // crop added to CROPS is always selectable as a previous crop too.
