@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { VILLAGES, getPresetVillages, villageByCode, NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel, villageNameLabel } from "@/lib/villages";
 import { CROPS, cropLabel } from "@/lib/crops";
 import { looksLikeSoilCode, looksLikeFarmerCode } from "@/lib/qr";
-import { CROP_API_VALUE, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
+import { cropApiValue, FIXED, operatorNote, neoperkFarmerName, submitPlotData, type PlotResult } from "@/lib/neoperk";
 import QrScanner from "@/components/QrScanner";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { displayName } from "@/lib/transliterate";
@@ -111,7 +111,7 @@ function ScanSampleInner() {
   };
 
   const village = form ? villageByCode(form.villageCode) : undefined;
-  const cropApi = form ? CROP_API_VALUE[form.crop] : undefined;
+  const cropApi = form ? cropApiValue(form.crop, form.state) : undefined;
   const districtOptions = form && form.state ? (DISTRICTS_BY_STATE[form.state] || []) : [];
   const districtValid = !!(form && form.district && districtOptions.includes(form.district));
   const blockedAsSent = !!(form && form.alreadySentId && !override);

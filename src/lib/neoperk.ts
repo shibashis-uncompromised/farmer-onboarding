@@ -2,17 +2,55 @@ import { API_BASE } from "./config";
 import { fetchWithTimeout } from "./api";
 import { getSession } from "./session";
 
-// Map our crop labels to the value the Neoperk Ext Plot Data API accepts.
-// (Confirmed against the live reference endpoint's crop list.)
-export const CROP_API_VALUE: Record<string, string> = {
+// Neoperk has one project per state, and each project enforces its own crop
+// enum. Rajasthan (US00) accepts English slugs; Madhya Pradesh (US01) only
+// accepts the exact Hindi strings returned by its own reference endpoint.
+// Values confirmed live against each project's GET /ext-api-plotdata response.
+
+/** Rajasthan (US00) — English crop slugs */
+const CROP_API_VALUE_RJ: Record<string, string> = {
   Groundnut: "groundnut",
-  Sesamum: "sesame",
+  Sesamum:   "sesame",
   Sunflower: "sunflower",
-  Paddy: "rice",
-  Rice: "rice",
-  Urad: "urad",
-  Turmeric: "turmeric",
+  Paddy:     "rice",
+  Rice:      "rice",
+  Urad:      "urad",
+  Turmeric:  "turmeric",
 };
+
+/** Madhya Pradesh (US01) — Hindi crop strings (exact Neoperk enum values) */
+const CROP_API_VALUE_MP: Record<string, string> = {
+  Groundnut: "मूंगफली",
+  Sesamum:   "तिल",
+  Sunflower: "सूरजमुखी",
+  Paddy:     "धान",
+  Rice:      "धान",
+  Urad:      "उड़द",
+  Turmeric:  "हल्दी",
+  Soybean:   "सोयाबीन",
+  Maize:     "मक्का",
+  Wheat:     "गेहूँ",
+  Gram:      "चना",
+  Sorghum:   "ज्वार",
+  Cotton:    "कपास",
+};
+
+/** Gujarat (US02) — English slugs (same project shape as RJ; extend if needed) */
+const CROP_API_VALUE_GJ: Record<string, string> = {
+  ...CROP_API_VALUE_RJ,
+};
+
+/** Return the correct crop API value for the given state, or undefined if unmapped. */
+export function cropApiValue(crop: string, state: string): string | undefined {
+  const map =
+    state === "Madhya Pradesh" ? CROP_API_VALUE_MP :
+    state === "Gujarat"        ? CROP_API_VALUE_GJ :
+    CROP_API_VALUE_RJ;
+  return map[crop];
+}
+
+// Keep the old export as the RJ map so existing callers don't break.
+export const CROP_API_VALUE = CROP_API_VALUE_RJ;
 
 // Fixed value on every submission (org contact number). state/district/village/
 // block are now selected per sample and drive which Neoperk project the backend
