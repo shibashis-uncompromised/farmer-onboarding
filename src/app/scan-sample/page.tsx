@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ActionIcon, Box, Button, Center, Container, Divider, Group, Loader, Paper, Select,
+  ActionIcon, Box, Button, Center, Code, Container, Divider, Group, Loader, Paper, Select,
   Stack, Text, TextInput, Textarea, ThemeIcon, Title,
 } from "@mantine/core";
 import {
-  ArrowLeft, QrCode, Keyboard, Flask, CheckCircle, WarningCircle, PaperPlaneTilt, ArrowClockwise,
+  ArrowLeft, QrCode, Keyboard, Flask, CheckCircle, WarningCircle, PaperPlaneTilt, ArrowClockwise, Info, Copy,
 } from "@phosphor-icons/react";
+import AppModal from "@/components/AppModal";
 import { notifications } from "@mantine/notifications";
 import SessionGate from "@/providers/SessionGate";
 import { db } from "@/lib/db";
@@ -49,6 +50,7 @@ function ScanSampleInner() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<PlotResult | null>(null);
   const [override, setOverride] = useState(false);   // "send anyway" for an already-sent sample
+  const [showDetails, setShowDetails] = useState(false);
 
   // Resolve a scanned/typed soil code → prefill everything we can from the app's data.
   const resolveCode = async (raw: string) => {
@@ -301,9 +303,24 @@ function ScanSampleInner() {
             ) : (
               <Paper withBorder radius="md" p="md" w="100%">
                 <Text c="red" fw={500} size="sm">{result.message || t("scanSample_couldNotSubmit")}</Text>
+                {result.httpStatus ? (
+                  <Text size="xs" c="dimmed" mt={4}>
+                    HTTP Status: <Text span fw={700} c={result.httpStatus === 401 ? "red" : undefined}>{result.httpStatus}</Text>
+                  </Text>
+                ) : null}
                 {result.errors?.length ? (
                   <Stack gap={2} mt={6}>{result.errors.map((e, i) => <Text key={i} size="xs" c="dimmed">• {e}</Text>)}</Stack>
                 ) : null}
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="gray"
+                  mt="sm"
+                  leftSection={<Info size={14} />}
+                  onClick={() => setShowDetails(true)}
+                >
+                  View Error & Payload Details
+                </Button>
               </Paper>
             )}
             <Button fullWidth size="md" leftSection={<ArrowClockwise size={18} />} onClick={reset}>{t("scanSample_sendAnother")}</Button>
@@ -313,6 +330,81 @@ function ScanSampleInner() {
           </Stack>
         )}
       </Container>
+
+      <AppModal
+        opened={showDetails}
+        onClose={() => setShowDetails(false)}
+        title="Submission Error Details"
+        size="lg"
+      >
+        <Stack gap="sm">
+          {result?.httpStatus && (
+            <div>
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">HTTP Response Code</Text>
+              <Text size="sm" fw={700} c={result.httpStatus === 401 ? "red" : undefined}>
+                {result.httpStatus} {result.httpStatus === 401 ? "(Unauthorized - token expired or missing)" : ""}
+              </Text>
+            </div>
+          )}
+
+          <div>
+            <Group justify="space-between" mb={2}>
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">Auth Token (JWT)</Text>
+              {result?.token && (
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  leftSection={<Copy size={12} />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(result.token || "");
+                    notifications.show({ message: "Token copied to clipboard" });
+                  }}
+                >
+                  Copy Token
+                </Button>
+              )}
+            </Group>
+            <Code block style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxHeight: 100, overflowY: "auto" }}>
+              {result?.token || "No token found (session missing)"}
+            </Code>
+          </div>
+
+          <div>
+            <Group justify="space-between" mb={2}>
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">Payload Sent</Text>
+              {result?.requestPayload && (
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  leftSection={<Copy size={12} />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(result.requestPayload, null, 2));
+                    notifications.show({ message: "Payload copied to clipboard" });
+                  }}
+                >
+                  Copy JSON
+                </Button>
+              )}
+            </Group>
+            <Code block style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto" }}>
+              {JSON.stringify(result?.requestPayload || {}, null, 2)}
+            </Code>
+          </div>
+
+          {result?.rawResponse && (
+            <div>
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">Server Response</Text>
+              <Code block style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>
+                {JSON.stringify(result.rawResponse, null, 2)}
+              </Code>
+            </div>
+          )}
+
+          <Button fullWidth variant="default" mt="xs" onClick={() => setShowDetails(false)}>
+            Close
+          </Button>
+        </Stack>
+      </AppModal>
 
       <QrScanner opened={scanOpen} onClose={() => setScanOpen(false)} onScan={resolveCode} onManual={() => setScanOpen(false)} />
     </Box>

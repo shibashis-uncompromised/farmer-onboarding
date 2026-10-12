@@ -88,24 +88,48 @@ export interface PlotResult {
   sample_id?: string;
   errors?: string[];
   reference?: string;
+  httpStatus?: number;
+  token?: string;
+  requestPayload?: Record<string, any>;
+  rawResponse?: any;
 }
 
 // Submit through our backend proxy (keeps the token server-side, avoids CORS).
 export async function submitPlotData(sub: PlotSubmission): Promise<PlotResult> {
   const s = getSession();
   if (!s) return { success: false, message: "Not signed in" };
+  const fullPayload = { token: s.token, ...FIXED, ...sub };
   try {
     const res = await fetchWithTimeout(`${API_BASE}/api/plotdata/submit`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${s.token}` },
-      body: JSON.stringify({ token: s.token, ...FIXED, ...sub }),
+      body: JSON.stringify(fullPayload),
     }, 20000);
     const data = await res.json().catch(() => ({}));
     if (!data || typeof data.success === "undefined") {
-      return { success: false, message: `Unexpected response (${res.status})` };
+      const errMsg = (data && (data.error || data.message)) || `Unexpected response (${res.status})`;
+      return {
+        success: false,
+        message: errMsg,
+        httpStatus: res.status,
+        token: s.token,
+        requestPayload: fullPayload,
+        rawResponse: data,
+      };
     }
-    return data as PlotResult;
+    return {
+      ...(data as PlotResult),
+      httpStatus: res.status,
+      token: s.token,
+      requestPayload: fullPayload,
+      rawResponse: data,
+    };
   } catch (e: any) {
-    return { success: false, message: e?.name === "AbortError" ? "Request timed out — check your connection" : (e?.message || "Network error") };
+    return {
+      success: false,
+      message: e?.name === "AbortError" ? "Request timed out — check your connection" : (e?.message || "Network error"),
+      token: s.token,
+      requestPayload: fullPayload,
+    };
   }
 }
