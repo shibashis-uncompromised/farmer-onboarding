@@ -8,7 +8,7 @@ import AppModal from "./AppModal";
 import { db } from "@/lib/db";
 import { uid } from "@/lib/ids";
 import { getSession } from "@/lib/session";
-import { NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel } from "@/lib/villages";
+import { NEOPERK_STATES, DISTRICTS_BY_STATE, stateLabel, districtLabel, regionsForUser } from "@/lib/villages";
 import type { CustomVillage } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -36,12 +36,22 @@ export default function CreateVillageModal({
   const [idCodeTouched, setIdCodeTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // States this user may create a village in — only those in their region(s).
+  // Admin gets all three; a region-scoped user (e.g. mpfield/ravindra → MP)
+  // gets just theirs, so they can't create a village outside their region.
+  const allowedStates = useMemo(() => {
+    const s = getSession();
+    const regions = regionsForUser(s?.username, s?.role);
+    return NEOPERK_STATES.filter((st) => regions.includes(REGION_OF[st]));
+  }, [opened]);
+  const lockedState = allowedStates.length === 1 ? allowedStates[0] : "";
+
   useEffect(() => {
     if (opened) {
-      setName(""); setState(""); setDistrict(""); setBlock("");
+      setName(""); setState(lockedState); setDistrict(""); setBlock("");
       setIdCode(""); setIdCodeTouched(false);
     }
-  }, [opened]);
+  }, [opened, lockedState]);
 
   // Auto-fill the ID code from the name until the user edits it directly.
   useEffect(() => {
@@ -95,9 +105,10 @@ export default function CreateVillageModal({
         />
         <Select
           label={t("scanSample_stateLabel")} placeholder={t("scanSample_statePlaceholder")} required
-          data={NEOPERK_STATES.map((s) => ({ value: s, label: stateLabel(s, language) }))}
+          data={allowedStates.map((s) => ({ value: s, label: stateLabel(s, language) }))}
           value={state || null}
           onChange={(v) => { setState(v || ""); setDistrict(""); }}
+          disabled={allowedStates.length <= 1}
           comboboxProps={{ withinPortal: true }} checkIconPosition="right"
         />
         <Select

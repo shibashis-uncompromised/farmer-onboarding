@@ -109,6 +109,7 @@ export const villageByCode = (code: string): Village | undefined =>
 // accounts (field/demo) keep seeing exactly the RJ villages they do today.
 const USER_REGIONS: Record<string, string[]> = {
   mpfield: ["MP"],
+  ravindra: ["MP"],            // MP field user — sees & creates MP villages only
   admin: ["RJ", "MP", "GJ"],   // admin sees every active region
 };
 
