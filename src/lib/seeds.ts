@@ -1,5 +1,13 @@
 // Seed types a farmer can receive. Edit to change the list.
-export const SEEDS = ["Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric"];
+export const SEEDS = [
+  "Groundnut", "Sesamum", "Sunflower", "Paddy", "Rice", "Urad", "Turmeric",
+  // 2026 onboarding portfolio — plain seed names (CROPS keeps the long labels)
+  "Ajwain", "Ashwagandha", "Barley", "Black Chana", "Kabuli Chana", "Chia",
+  "Coriander", "Cumin", "Spinach", "Fennel", "Field Pea", "Flaxseed", "Garlic",
+  "Isabgol", "Methi", "Black Mustard", "Yellow Mustard", "Oats", "Potato",
+  "Quinoa", "Red Chilli", "Safflower", "Sugarbeet", "Tomato", "Masoor",
+  "Black Wheat", "Khapli Wheat", "Sona-Moti Wheat", "Sharbati Wheat",
+];
 
 export const SEED_QTY_MAX = 99;
 
