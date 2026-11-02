@@ -440,7 +440,7 @@ function PlotRow(
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
             <ThemeIcon variant="light" color="green" size="md" radius="sm"><Plant size={16} /></ThemeIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Text size="sm" fw={600} truncate>
+              <Text size="sm" fw={600} style={{ overflowWrap: "anywhere" }}>
                 {plot.name || t("farms_plotN", { seq: plot.seq })} · {plot.crop ? cropLabel(plot.crop, language) : t("farms_noCropYet")}
               </Text>
               {(waterTestCount > 0 || soilTestCount > 0) && (
